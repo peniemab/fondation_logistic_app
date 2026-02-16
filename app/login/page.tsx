@@ -15,9 +15,6 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ 
   email, 
   password,
-  options: {
-    // On peut forcer ici aussi la non-persistance si besoin
-  }
 })
 
     if (error) {

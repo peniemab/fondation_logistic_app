@@ -251,7 +251,7 @@ export default function LogicielFES() {
               </div>
               <div className="grid grid-cols-2 gap-4">
               <input name="telephone" value={fiche.telephone} placeholder="TÉLÉPHONE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none print:border-none" />
-              <input name="email" value={fiche.email} placeholder="EMAIL" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none print:border-none" />
+              <input name="email" value={fiche.email} placeholder="EMAIL" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-xs outline-none print:border-none" />
             </div>
             </div>
           </section>
@@ -259,10 +259,10 @@ export default function LogicielFES() {
           <section className="space-y-4">
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">III. Détails Fonciers</h2>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-              <input name="num_parcelle" value={fiche.num_parcelle} placeholder="N° PARCELLE" onChange={handleChange} className="w-full border-b border-blue-300 py-2 font-black text-blue-700 outline-none print:text-black" />
-                <input name="num_cadastral" value={fiche.num_cadastral} placeholder="N° CADASTRAL" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none print:border-none" />
-                <input name="num_acte_vente" value={fiche.num_acte_vente} placeholder="N° ACTE DE VENTE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none print:border-none" />
+              <div className="grid grid-cols-3 gap-4">
+              <input name="num_parcelle" value={fiche.num_parcelle} placeholder="N° PARCELLE" onChange={handleChange} className="w-full border-b border-blue-300 py-2 font-black text-xs text-blue-700 outline-none print:text-black" />
+                <input name="num_cadastral" value={fiche.num_cadastral} placeholder="N° CADASTRAL" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-xs outline-none print:border-none" />
+                <input name="num_acte_vente" value={fiche.num_acte_vente} placeholder="N° ACTE DE VENTE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-xs outline-none print:border-none" />
               </div>
             </div>
           </section>
@@ -290,7 +290,7 @@ export default function LogicielFES() {
                 </div>
               )}
 
-              <div className="bg-blue-50 p-4 border border-blue-100 rounded-lg print:bg-white print:border-slate-900 print:border-2">
+              <div className="bg-blue-50 p-2 border border-blue-100 rounded-lg print:bg-white print:border-slate-900 print:border-2">
                 <div className="flex justify-between text-[10px] font-black text-blue-800 print:text-black">
                   <span>PRIX: {modalites.total}$</span>
                   <span>ACOMPTE: {modalites.acompte}$</span>
@@ -303,44 +303,26 @@ export default function LogicielFES() {
 
         {/* ... (Paiements et reste de la page) ... */}
         {fiche.noms && (
-          <div className="mt-12 pt-12 border-t-2 border-slate-100 space-y-10">
+          <div className="mt-1 pt-1 border-t-2 border-slate-100 space-y-10">
             {/* Résumé du Compte */}
             <section>
-              <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider mb-4">V. Résumé du Compte Souscripteur</h2>
+              <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider mb-2">V. Résumé du Compte Souscripteur</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 border-2 border-slate-900 divide-x-2 divide-slate-900 text-center">
-                <div className="p-3"><span className="text-[9px] block text-slate-500 uppercase">Prix Total</span><span className="font-black">{modalites.total}$</span></div>
-                <div className="p-3"><span className="text-[9px] block text-slate-500 uppercase">Acompte</span><span className="font-black">{modalites.acompte}$</span></div>
-                <div className="p-3 bg-green-50 print:bg-white"><span className="text-[9px] block text-green-600 uppercase">Versé</span><span className="font-black text-green-700 print:text-black">{totalVerse.toFixed(2)}$</span></div>
-                <div className="p-3 bg-red-50 print:bg-white"><span className="text-[9px] block text-red-600 uppercase">Reste</span><span className="font-black text-red-700 print:text-black">{resteAPayer.toFixed(2)}$</span></div>
+                <div className="p-1"><span className="text-[5px] block text-slate-500 uppercase">Prix Total</span><span className="font-black">{modalites.total}$</span></div>
+                <div className="p-1"><span className="text-[5px] block text-slate-500 uppercase">Acompte</span><span className="font-black">{modalites.acompte}$</span></div>
+                <div className="p-1 bg-green-50 print:bg-white"><span className="text-[5px] block text-green-600 uppercase">Versé</span><span className="font-black text-green-700 print:text-black">{totalVerse.toFixed(2)}$</span></div>
+                <div className="p-1 bg-red-50 print:bg-white"><span className="text-[5px] block text-red-600 uppercase">Reste</span><span className="font-black text-red-700 print:text-black">{resteAPayer.toFixed(2)}$</span></div>
               </div>
             </section>
 
-            {/* Historique */}
-            <section>
-              <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider mb-4">VI. Historique des Versements</h2>
-              <table className="w-full border-collapse border border-slate-200 text-sm">
-                <thead className="bg-slate-900 text-white text-[10px] uppercase print:bg-slate-200 print:text-black">
-                  <tr><th className="p-2 border">Date</th><th className="p-2 border">Référence</th><th className="p-2 border text-right">Montant</th><th className="p-2 border">Statut</th></tr>
-                </thead>
-                <tbody>
-                  {paiements.map((p, i) => (
-                    <tr key={i} className="text-center italic">
-                      <td className="p-2 border text-[11px]">{new Date(p.created_at).toLocaleString()}</td>
-                      <td className="p-2 border font-bold uppercase">{p.reference_bordereau}</td>
-                      <td className="p-2 border text-right font-black">{p.montant}$</td>
-                      <td className="p-2 border text-[9px] font-black text-green-600 uppercase">{p.statut}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
+            
 
             {/* Guichet de saisie rapide */}
-            <section className="bg-slate-900 p-6 rounded-lg text-white print:hidden shadow-2xl">
-              <h3 className="text-yellow-500 font-black text-[10px] uppercase mb-4 italic tracking-widest">Saisie Nouveau Paiement</h3>
+            <section className="bg-slate-900 p-3 rounded-lg text-white print:hidden shadow-2xl">
+              <h3 className="text-yellow-500 font-black text-[10px] uppercase mb-2 italic tracking-widest">Saisie Nouveau Paiement</h3>
               <div className="flex flex-col md:flex-row gap-4">
-                <input type="number" placeholder="MONTANT $" value={montantSaisie} onChange={(e) => setMontantSaisie(e.target.value)} className="bg-slate-800 p-3 rounded font-bold w-full md:w-32 outline-none focus:ring-2 ring-yellow-500" />
-                <input type="text" placeholder="RÉFÉRENCE BORDEREAU" value={refBordereau} onChange={(e) => setRefBordereau(e.target.value)} className="bg-slate-800 p-3 rounded font-bold flex-1 uppercase outline-none focus:ring-2 ring-yellow-500" />
+                <input type="number" placeholder="MONTANT $" value={montantSaisie} onChange={(e) => setMontantSaisie(e.target.value)} className="bg-slate-800 p-1 rounded font-bold w-full md:w-32 outline-none focus:ring-2 ring-yellow-500" />
+                <input type="text" placeholder="RÉFÉRENCE BORDEREAU" value={refBordereau} onChange={(e) => setRefBordereau(e.target.value)} className="bg-slate-800 p-1 rounded font-bold flex-1 uppercase outline-none focus:ring-2 ring-yellow-500" />
                 <button onClick={ajouterPaiement} className="bg-yellow-500 text-slate-900 px-8 py-3 font-black uppercase text-xs hover:bg-white transition-all">Valider</button>
               </div>
             </section>
@@ -354,12 +336,12 @@ export default function LogicielFES() {
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
               Souscripteur
             </p>
-            <div className="w-full border-b border-slate-900 pb-1 mb-10">
+            <div className="w-full border-b border-slate-900 pb-1 mb-3">
               <span className="text-[10px] font-bold text-slate-800 uppercase">
                 {fiche.noms || "Nom du souscripteur"}
               </span>
             </div>
-            <div className="h-20 w-48 border border-dashed border-slate-200 rounded flex items-center justify-center italic text-[9px] text-slate-300 print:border-none">
+            <div className="h-20 w-48 border border-dashed border-slate-200 rounded flex items-center justify-center italic text-[9px] text-slate-300 mb-23 print:border-none">
               Signature précédée de la mention <br/> "Lu et approuvé"
             </div>
           </div>
@@ -369,17 +351,33 @@ export default function LogicielFES() {
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
               Pour la Fondation FES / MBA
             </p>
-            {/* <div className="w-full border-b border-slate-900 pb-1 mb-10">
+            <div className="w-full border-b border-slate-900 pb-1 mb-1">
               <span className="text-[10px] font-bold text-slate-800 uppercase">
                 Sceau et Signature
               </span>
-            </div> */}
-            {/* Espace pour le cachet physique */}
-            <div className="h-24 w-24 border-2 border-double border-blue-50 rounded-full flex items-center justify-center italic text-[8px] text-blue-100 print:border-none">
-              
             </div>
+            
           </div>
         </div>
+        {/* Historique */}
+            <section>
+              <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider mb-4">VI. Historique des Versements</h2>
+              <table className="w-full border-collapse border border-slate-200 text-xs print:text-xs">
+                <thead className="bg-slate-900 text-white text-[10px] uppercase print:bg-slate-200 print:text-black">
+                  <tr><th className="p-1 border">Date</th><th className="p-1 border">Référence</th><th className="p-1 border text-right">Montant</th><th className="p-1 border">Statut</th></tr>
+                </thead>
+                <tbody>
+                  {paiements.map((p, i) => (
+                    <tr key={i} className="text-center italic">
+                      <td className="p-1 border text-[11px]">{new Date(p.created_at).toLocaleString()}</td>
+                      <td className="p-1 border font-bold uppercase">{p.reference_bordereau}</td>
+                      <td className="p-1 border text-right font-black">{p.montant}$</td>
+                      <td className="p-1 border text-[9px] font-black text-green-600 uppercase">{p.statut}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
 
         {/* PIED DE PAGE TECHNIQUE (Visible uniquement à l'impression) */}
         <div className="hidden print:block mt-10 pt-4 border-t border-slate-200 text-center">
