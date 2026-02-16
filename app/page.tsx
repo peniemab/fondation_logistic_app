@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
 import { QRCodeSVG } from 'qrcode.react'
@@ -35,11 +35,23 @@ export default function LogicielFES() {
   const [montantSaisie, setMontantSaisie] = useState('')
   const [refBordereau, setRefBordereau] = useState('')
 
+  // --- 1. FONCTIONS DE BASE (Déclarées en premier) ---
+
+  const handleLogout = useCallback(async (reason: any = "") => {
+    await supabase.auth.signOut()
+    if (reason === "timeout") {
+      alert("⚠️ Session expirée après 5 minutes d'inactivité pour votre sécurité.")
+    }
+    window.location.href = '/login'
+  }, [])
+
   const fetchLastID = async () => {
     const { data } = await supabase.from('souscripteurs').select('num_fiche').order('id', { ascending: false }).limit(1)
     const nextId = data?.[0]?.num_fiche ? parseInt(data[0].num_fiche) + 1 : 1
     setFiche(prev => ({ ...prev, num_fiche: nextId.toString().padStart(3, '0') }))
   }
+
+  // --- 2. EFFETS (Utilisent les fonctions déclarées plus haut) ---
 
   useEffect(() => {
     const checkUser = async () => {
@@ -53,6 +65,27 @@ export default function LogicielFES() {
     };
     checkUser();
   }, []);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    const resetTimer = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        handleLogout("timeout");
+      }, 300000); 
+    };
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    if (sessionActive) {
+      resetTimer();
+      events.forEach(event => document.addEventListener(event, resetTimer));
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+      events.forEach(event => document.removeEventListener(event, resetTimer));
+    };
+  }, [sessionActive, handleLogout]);
+
+  // --- 3. LOGIQUE MÉTIER ---
 
   const modalites = (fiche.site && TARIFS_OFFICIELS[fiche.site]) 
     ? TARIFS_OFFICIELS[fiche.site][fiche.dimension] 
@@ -92,11 +125,6 @@ export default function LogicielFES() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFiche({ ...fiche, [e.target.name]: e.target.value })
-  }
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
   }
   
   const handleSave = async () => {
@@ -149,7 +177,6 @@ export default function LogicielFES() {
   return (
     <div className="min-h-screen bg-slate-100 p-2 md:p-8 font-sans text-slate-800">
       
-      {/* BARRE DE RECHERCHE - STACK SUR MOBILE */}
       <div className="max-w-[1000px] mx-auto mb-4 flex flex-col md:flex-row gap-2 print:hidden">
         <input 
           className="flex-1 p-4 rounded-lg shadow-inner border-none outline-none font-bold text-blue-900 focus:ring-2 ring-blue-500"
@@ -162,7 +189,8 @@ export default function LogicielFES() {
           <button onClick={executerRecherche} className="flex-1 md:flex-none bg-blue-900 text-white px-8 rounded-lg font-black hover:bg-black transition-all">
             RECHERCHER
           </button>
-          <button onClick={handleLogout} className="bg-red-600 text-white px-4 rounded-lg font-bold text-[10px] uppercase border-2 border-red-700">
+          {/* CORRECTION ICI : Appel via fonction fléchée pour éviter l'erreur de type */}
+          <button onClick={() => handleLogout()} className="bg-red-600 text-white px-4 rounded-lg font-bold text-[10px] uppercase border-2 border-red-700">
             Quitter
           </button>
         </div>
@@ -170,7 +198,6 @@ export default function LogicielFES() {
 
       <div id="fiche-officielle" className="max-w-[1000px] mx-auto bg-white shadow-2xl rounded-sm border-t-[12px] border-blue-900 p-4 md:p-10 print:border-t-0 print:shadow-none overflow-hidden">
     
-        {/* ENTETE RESPONSIVE - FLEX COL SUR MOBILE */}
         <div className="flex flex-col md:flex-row justify-between items-center border-b-2 border-slate-200 pb-4 mb-6 gap-6">
           <div className="flex flex-col md:flex-row items-center gap-5 text-center md:text-left">
             <div className="w-20 h-20 md:w-24 md:h-24 flex items-center justify-center">
@@ -191,33 +218,29 @@ export default function LogicielFES() {
           </div>
         </div>
 
-        {/* FORMULAIRE GRID RESPONSIVE */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-          
-          {/* SECTION I */}
           <section className="space-y-4">
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">I. Références Identitaires</h2>
             <div className="space-y-4">
-              <input name="noms" value={fiche.noms} placeholder="NOMS" onChange={handleChange} className="w-full border-b border-slate-300 py-2 font-bold uppercase outline-none focus:border-blue-900" />
+              <input name="noms" value={fiche.noms} placeholder="NOMS" onChange={handleChange} className="w-full border-b border-slate-300 py-2 uppercase outline-none focus:border-blue-900" />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <input name="employeur" value={fiche.employeur} placeholder="EMPLOYEUR" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
-                <input name="matricule" value={fiche.matricule} placeholder="MATRICULE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
+                <input name="employeur" value={fiche.employeur} placeholder="EMPLOYEUR" onChange={handleChange} className="w-full uppercase border-b border-slate-200 py-2 text-sm outline-none" />
+                <input name="matricule" value={fiche.matricule} placeholder="MATRICULE / C. DE SERVICE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <input name="num_piece_id" value={fiche.num_piece_id} placeholder="N° PIÈCE D'ID" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none font-medium" />
-                <input name="fonction" value={fiche.fonction} placeholder="FONCTION" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
+                <input name="num_piece_id" value={fiche.num_piece_id} placeholder="N° PIÈCE D'ID / PASSEPORT" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none font-medium" />
+                <input name="fonction" value={fiche.fonction} placeholder="FONCTION" onChange={handleChange} className="w-full border-b uppercase border-slate-200 py-2 text-sm outline-none" />
               </div>
             </div>
           </section>
 
-          {/* SECTION II */}
           <section className="space-y-4">
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">II. Adresse & Contact</h2>
             <div className="space-y-4">
               <input name="avenue_num" value={fiche.avenue_num} placeholder="AVENUE ET NUMÉRO" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <input name="quartier" value={fiche.quartier} placeholder="QUARTIER" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
-                <input name="commune" value={fiche.commune} placeholder="COMMUNE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
+                <input name="quartier" value={fiche.quartier} placeholder="QUARTIER" onChange={handleChange} className="w-full border-b border-slate-200 uppercase py-2 text-sm outline-none" />
+                <input name="commune" value={fiche.commune} placeholder="COMMUNE" onChange={handleChange} className="w-full border-b uppercase border-slate-200 py-2 text-sm outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input name="telephone" value={fiche.telephone} placeholder="TÉLÉPHONE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
@@ -226,7 +249,6 @@ export default function LogicielFES() {
             </div>
           </section>
 
-          {/* SECTION III & IV */}
           <section className="space-y-4">
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">III. Détails Fonciers</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -263,7 +285,6 @@ export default function LogicielFES() {
           </section>
         </div>
 
-        {/* FINANCES RESPONSIVE */}
         {fiche.noms && (
           <div className="mt-10 pt-6 border-t-2 border-slate-100 space-y-8">
             <section>
@@ -287,7 +308,6 @@ export default function LogicielFES() {
           </div>
         )}
 
-        {/* SIGNATURES RESPONSIVE */}
         <div className="mt-20 flex flex-col sm:flex-row justify-between gap-10 text-center border-t border-slate-100 pt-10">
           <div className="flex-1">
             <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Souscripteur</p>
@@ -304,7 +324,6 @@ export default function LogicielFES() {
           </div>
         </div>
 
-        {/* HISTORIQUE TABLEAU - SCROLLABLE SUR MOBILE */}
         <section className="mt-25 overflow-x-auto">
           <h2 className="text-blue-900 font-black text-xs uppercase mb-4">VI. Historique des Versements</h2>
           <table className="w-full border-collapse border border-slate-200 text-[10px]">
@@ -326,7 +345,7 @@ export default function LogicielFES() {
             </tbody>
           </table>
         </section>
-        {/* PIED DE PAGE TECHNIQUE (Visible uniquement à l'impression ou optimisé mobile) */}
+
         <div className="hidden print:block mt-8 md:mt-12 pt-4 border-t border-slate-100 text-center">
           <div className="flex flex-col items-center gap-1">
             <p className="text-[7px] md:text-[8px] text-slate-400 uppercase tracking-[0.2em] md:tracking-[0.3em] leading-relaxed">
@@ -337,9 +356,7 @@ export default function LogicielFES() {
             </p>
           </div>
         </div>
-        {/* ============================================================= */}
 
-        {/* ACTIONS FINALES - STACK SUR MOBILE */}
         <div className="mt-10 pt-6 border-t-2 border-slate-100 flex flex-col md:flex-row gap-3 print:hidden">
           <button onClick={imprimerFiche} className="w-full md:flex-1 bg-green-900 text-white p-4 font-black uppercase text-xs">Imprimer</button>
           <button onClick={nouveauDossier} className="w-full md:w-24 bg-white text-slate-400 p-4 font-black uppercase text-xs border border-slate-200">New</button>
