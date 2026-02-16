@@ -35,7 +35,7 @@ export default function LogicielFES() {
   const [montantSaisie, setMontantSaisie] = useState('')
   const [refBordereau, setRefBordereau] = useState('')
 
-  // --- 1. FONCTIONS DE BASE (Déclarées en premier) ---
+  // --- 1. FONCTIONS DE BASE ---
 
   const handleLogout = useCallback(async (reason: any = "") => {
     await supabase.auth.signOut()
@@ -45,13 +45,25 @@ export default function LogicielFES() {
     window.location.href = '/login'
   }, [])
 
+  // MODIFICATION 1 : On cherche le numéro de fiche le plus haut pour incrémenter correctement
   const fetchLastID = async () => {
-    const { data } = await supabase.from('souscripteurs').select('num_fiche').order('id', { ascending: false }).limit(1)
-    const nextId = data?.[0]?.num_fiche ? parseInt(data[0].num_fiche) + 1 : 1
-    setFiche(prev => ({ ...prev, num_fiche: nextId.toString().padStart(3, '0') }))
+    const { data } = await supabase
+      .from('souscripteurs')
+      .select('num_fiche')
+      .order('num_fiche', { ascending: false })
+      .limit(1)
+    
+    const lastNum = data?.[0]?.num_fiche ? parseInt(data[0].num_fiche) : 0
+    const nextId = lastNum + 1
+    
+    setFiche(prev => ({ 
+      ...prev, 
+      id: null, // On force l'ID à null pour être sûr que c'est un NOUVEAU dossier
+      num_fiche: nextId.toString().padStart(3, '0') 
+    }))
   }
 
-  // --- 2. EFFETS (Utilisent les fonctions déclarées plus haut) ---
+  // --- 2. EFFETS ---
 
   useEffect(() => {
     const checkUser = async () => {
@@ -127,20 +139,25 @@ export default function LogicielFES() {
     setFiche({ ...fiche, [e.target.name]: e.target.value })
   }
   
+  // MODIFICATION 2 : Gestion propre du payload pour différencier Création et Mise à jour
   const handleSave = async () => {
     if (!fiche.noms || !fiche.site) return alert("Le nom et le site sont obligatoires")
     setLoading(true)
-    const { id, ...donneesAEnvoyer } = fiche;
-    const payload = fiche.id ? fiche : donneesAEnvoyer;
+    
+    // On extrait l'ID. S'il est null, Supabase créera une nouvelle ligne.
+    const { id, ...donneesNettoyées } = fiche;
+    const payload = fiche.id ? fiche : donneesNettoyées;
 
     const { data, error } = await supabase
       .from('souscripteurs')
-      .upsert([{
-        ...payload,
-        prix_total: modalites.total,
-        acompte_initial: modalites.acompte,
-        quotite_mensuelle: modalites.mensualite
-      }], { onConflict: 'num_fiche' }) 
+      .upsert([
+        {
+          ...payload,
+          prix_total: modalites.total,
+          acompte_initial: modalites.acompte,
+          quotite_mensuelle: modalites.mensualite
+        }
+      ], { onConflict: 'num_fiche' }) 
       .select()
       .single()
 
@@ -148,7 +165,7 @@ export default function LogicielFES() {
       alert("Erreur : " + error.message)
     } else {
       setFiche(data);
-      alert("Dossier enregistré avec succès !");
+      alert(fiche.id ? "Dossier mis à jour !" : "Nouveau dossier enregistré !");
     }
     setLoading(false)
   }
@@ -189,7 +206,6 @@ export default function LogicielFES() {
           <button onClick={executerRecherche} className="flex-1 md:flex-none bg-blue-900 text-white px-8 rounded-lg font-black hover:bg-black transition-all">
             RECHERCHER
           </button>
-          {/* CORRECTION ICI : Appel via fonction fléchée pour éviter l'erreur de type */}
           <button onClick={() => handleLogout()} className="bg-red-600 text-white px-4 rounded-lg font-bold text-[10px] uppercase border-2 border-red-700">
             Quitter
           </button>
@@ -361,7 +377,7 @@ export default function LogicielFES() {
           <button onClick={imprimerFiche} className="w-full md:flex-1 bg-green-900 text-white p-4 font-black uppercase text-xs">Imprimer</button>
           <button onClick={nouveauDossier} className="w-full md:w-24 bg-white text-slate-400 p-4 font-black uppercase text-xs border border-slate-200">New</button>
           <button onClick={handleSave} disabled={loading} className="w-full md:flex-[2] bg-yellow-700 text-white p-4 font-black uppercase text-xs shadow-xl disabled:bg-slate-300">
-            {loading ? 'CHARGEMENT...' : 'Enregistrer le dossier'}
+            {loading ? 'CHARGEMENT...' : (fiche.id ? 'Mettre à jour' : 'Enregistrer le dossier')}
           </button>
         </div>
 
