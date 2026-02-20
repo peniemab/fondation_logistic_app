@@ -17,6 +17,11 @@ export default function LogicielFES() {
   const [recherche, setRecherche] = useState('')
   const [sessionActive, setSessionActive] = useState(false);
   
+  // --- MODIFICATION SÉCURITÉ : États pour la fenêtre de suppression ---
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+
   const [fiche, setFiche] = useState({
     id: null,
     num_fiche: '',
@@ -40,12 +45,11 @@ export default function LogicielFES() {
   const handleLogout = useCallback(async (reason: any = "") => {
     await supabase.auth.signOut()
     if (reason === "timeout") {
-      alert("⚠️ Session expirée après 1 minutes d'inactivité pour votre sécurité.")
+      alert("Session expirée.")
     }
     window.location.href = '/login'
   }, [])
 
-  // MODIFICATION 1 : On cherche le numéro de fiche le plus haut pour incrémenter correctement
   const fetchLastID = async () => {
     const { data } = await supabase
       .from('souscripteurs')
@@ -58,7 +62,7 @@ export default function LogicielFES() {
     
     setFiche(prev => ({ 
       ...prev, 
-      id: null, // On force l'ID à null pour être sûr que c'est un NOUVEAU dossier
+      id: null,
       num_fiche: nextId.toString().padStart(3, '0') 
     }))
   }
@@ -98,7 +102,7 @@ export default function LogicielFES() {
   }, [sessionActive, handleLogout]);
 
   // --- 3. LOGIQUE MÉTIER ---
-const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.site] || {}) : [];
+  const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.site] || {}) : [];
 
   const modalites = (fiche.site && TARIFS_OFFICIELS[fiche.site] && TARIFS_OFFICIELS[fiche.site][fiche.dimension]) 
     ? TARIFS_OFFICIELS[fiche.site][fiche.dimension] 
@@ -107,20 +111,70 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
   const executerRecherche = async () => {
     if (!recherche) return;
     setLoading(true);
-    const { data, error } = await supabase
+
+    const { data: resultats, error } = await supabase
       .from('souscripteurs')
       .select('*')
-      .or(`num_fiche.eq.${recherche},noms.ilike.%${recherche}%,num_parcelle.eq.${recherche},email.eq.${recherche}`)
-      .maybeSingle();
+      .or(`num_fiche.eq.${recherche},noms.ilike.%${recherche}%,num_parcelle.eq.${recherche},telephone.eq.${recherche},email.eq.${recherche}`);
 
-    if (error) alert("Erreur de recherche");
-    else if (data) {
-      setFiche(data);
-      const { data: pData } = await supabase.from('paiements').select('*').eq('num_fiche', data.num_fiche).order('created_at', { ascending: false });
+    if (error) {
+      alert("Erreur de recherche");
+    } else if (resultats && resultats.length > 0) {
+      const dossierACharger = resultats[0];
+
+      if (resultats.length > 1) {
+        alert(`${resultats.length} dossiers trouvés pour "${recherche}".\nAffichage du dossier N° ${dossierACharger.num_fiche}.\n\nPour une autre parcelle, veuillez saisir le numéro de fiche exact.`);
+      }
+
+      setFiche(dossierACharger);
+
+      // Récupération des paiements liée à cette fiche précise
+      const { data: pData } = await supabase
+        .from('paiements')
+        .select('*')
+        .eq('num_fiche', dossierACharger.num_fiche)
+        .order('created_at', { ascending: false });
+        
       setPaiements(pData || []);
-    } else alert("Aucun souscripteur trouvé.");
+    } else {
+      alert("Aucun souscripteur trouvé.");
+    }
     setLoading(false);
   }
+
+  // --- MODIFICATION SÉCURITÉ : Fonction de suppression avec Re-vérification ---
+  const handleAdminDelete = async () => {
+    setLoading(true);
+    
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: adminEmail,
+      password: adminPassword,
+    });
+
+    const EMAIL_AUTORISE = "coordon@fes.com"; 
+
+    if (authError || data.user?.email !== EMAIL_AUTORISE) {
+      alert("ACCÈS REFUSÉ : Seul le coordon peut autoriser une suppression.");
+      setLoading(false);
+      return;
+    }
+
+    if (confirm("suppression définitive du dossier?")) {
+      await supabase.from('paiements').delete().eq('num_fiche', fiche.num_fiche);
+      const { error } = await supabase.from('souscripteurs').delete().eq('id', fiche.id);
+      
+      if (!error) {
+        alert("Dossier supprimé avec succès par le coordonnateur.");
+        window.location.reload();
+      } else {
+        alert("Erreur de suppression.");
+      }
+    }
+
+    setLoading(false);
+    setShowAdminLogin(false);
+    setAdminPassword(''); 
+  };
 
   const nouveauDossier = () => {
     if (confirm("Effacer le formulaire pour un nouveau dossier ?")) {
@@ -140,12 +194,10 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
     setFiche({ ...fiche, [e.target.name]: e.target.value })
   }
   
-  // MODIFICATION 2 : Gestion propre du payload pour différencier Création et Mise à jour
   const handleSave = async () => {
     if (!fiche.noms || !fiche.site) return alert("Le nom et le site sont obligatoires")
     setLoading(true)
     
-    // On extrait l'ID. S'il est null, Supabase créera une nouvelle ligne.
     const { id, ...donneesNettoyées } = fiche;
     const payload = fiche.id ? fiche : donneesNettoyées;
 
@@ -198,7 +250,7 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
       <div className="max-w-[1000px] mx-auto mb-4 flex flex-col md:flex-row gap-2 print:hidden">
         <input 
           className="flex-1 p-4 rounded-lg shadow-inner border-none outline-none font-bold text-blue-900 focus:ring-2 ring-blue-500"
-          placeholder="Nom, N° Fiche..."
+          placeholder="Nom, N° Fiche, Numéro de parcelle, Téléphone, Email..."
           value={recherche}
           onChange={(e) => setRecherche(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && executerRecherche()}
@@ -246,8 +298,7 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input name="num_piece_id" value={fiche.num_piece_id} placeholder="N° PIÈCE D'ID / PASSEPORT" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none font-medium" />
-                <input name="fonction" value={fiche.fonction} placeholder="FONCTION" onChange={handleChange} className="w-full border-b uppercase border-slate-200 py-2 text-sm outline-none" />
-              </div>
+<input name="fonction" value={fiche.fonction} placeholder="FONCTION" onChange={handleChange} className="w-full border-b uppercase border-slate-200 py-2 text-sm outline-none" />              </div>
             </div>
           </section>
 
@@ -259,10 +310,27 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
                 <input name="quartier" value={fiche.quartier} placeholder="QUARTIER" onChange={handleChange} className="w-full border-b border-slate-200 uppercase py-2 text-sm outline-none" />
                 <input name="commune" value={fiche.commune} placeholder="COMMUNE" onChange={handleChange} className="w-full border-b uppercase border-slate-200 py-2 text-sm outline-none" />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <input name="telephone" value={fiche.telephone} placeholder="TÉLÉPHONE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
-                <input name="email" value={fiche.email} placeholder="EMAIL" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  <div className="sm:col-span-1">
+    <input 
+      name="telephone" 
+      value={fiche.telephone} 
+      placeholder="TÉLÉPHONE" 
+      onChange={handleChange} 
+      className="w-full border-b border-slate-200 py-2 text-sm outline-none focus:border-blue-500" 
+    />
+  </div>
+
+  <div className="sm:col-span-2">
+    <input 
+      name="email" 
+      value={fiche.email} 
+      placeholder="EMAIL" 
+      onChange={handleChange} 
+      className="w-full border-b border-slate-200 py-2 text-sm outline-none focus:border-blue-500" 
+    />
+  </div>
+</div>
             </div>
           </section>
 
@@ -274,7 +342,7 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
               <input name="num_acte_vente" value={fiche.num_acte_vente} placeholder="N° ACTE DE VENTE" onChange={handleChange} className="border-b border-slate-200 py-2 text-xs outline-none" />
             </div>
           </section>
-<section className="space-y-4">
+          <section className="space-y-4">
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">IV. Site & Dimensions</h2>
             <div className="space-y-4">
               <select name="site" value={fiche.site} onChange={handleChange} className="w-full border-b-2 border-blue-200 py-2 font-bold text-blue-900 outline-none bg-white print:hidden">
@@ -292,7 +360,6 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
                 </select>
               )}
 
-              {/* Affichage des tarifs automatiques */}
               {fiche.site && (
                 <div className="flex justify-between items-center bg-blue-50 p-2 border border-blue-100 rounded-lg print:border-slate-900 print:border-2">
                   <div className="flex flex-col">
@@ -385,15 +452,64 @@ const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.si
           </div>
         </div>
 
+        {/* --- MODIFICATION SÉCURITÉ : Bloc des boutons avec Delete --- */}
         <div className="mt-10 pt-6 border-t-2 border-slate-100 flex flex-col md:flex-row gap-3 print:hidden">
           <button onClick={imprimerFiche} className="w-full md:flex-1 bg-green-900 text-white p-4 font-black uppercase text-xs">Imprimer</button>
           <button onClick={nouveauDossier} className="w-full md:w-24 bg-white text-slate-400 p-4 font-black uppercase text-xs border border-slate-200">New</button>
+          
+          {fiche.id && (
+            <button 
+              onClick={() => setShowAdminLogin(true)} 
+              className="w-full md:w-24 bg-red-100 text-red-600 p-4 font-black uppercase text-[10px] border border-red-200 hover:bg-red-600 hover:text-white transition-all"
+            >
+              Supprimer
+            </button>
+          )}
+
           <button onClick={handleSave} disabled={loading} className="w-full md:flex-[2] bg-yellow-700 text-white p-4 font-black uppercase text-xs shadow-xl disabled:bg-slate-300">
             {loading ? 'CHARGEMENT...' : (fiche.id ? 'Mettre à jour' : 'Enregistrer le dossier')}
           </button>
         </div>
 
       </div>
+
+      {/* ---  Fenêtre (Modal) d'autorisation Présidentielle --- */}
+      {showAdminLogin && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md">
+          <div className="bg-white p-8 rounded-xl max-w-sm w-full shadow-2xl border-t-8 border-red-600">
+            <h3 className="text-red-600 font-black text-lg mb-2 uppercase text-center tracking-tighter">Autorisation Requise</h3>
+            <p className="text-[10px] text-slate-500 mb-6 text-center font-bold uppercase">Identifiants administrateur</p>
+            
+            <div className="space-y-3">
+              <input 
+                type="email" 
+                placeholder="EMAIL AUTORISÉ" 
+                className="w-full p-3 bg-slate-100 rounded border-none font-bold text-sm outline-none focus:ring-2 ring-red-500"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+              />
+              <input 
+                type="password" 
+                placeholder="Mot de passe" 
+                className="w-full p-3 bg-slate-100 rounded border-none font-bold text-sm outline-none focus:ring-2 ring-red-500"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+              />
+              <div className="flex gap-2 pt-4">
+                <button onClick={() => { setShowAdminLogin(false); setAdminPassword(''); }} className="flex-1 p-3 text-xs font-bold text-slate-400 uppercase">Annuler</button>
+                <button 
+                  onClick={handleAdminDelete}
+                  disabled={loading}
+                  className="flex-1 p-3 bg-red-600 text-white rounded font-black text-xs uppercase shadow-lg active:scale-95 transition-transform disabled:bg-slate-400"
+                >
+                  {loading ? 'Vérification...' : 'Supprimer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
