@@ -40,7 +40,7 @@ export default function LogicielFES() {
   const handleLogout = useCallback(async (reason: any = "") => {
     await supabase.auth.signOut()
     if (reason === "timeout") {
-      alert("⚠️ Session expirée après 5 minutes d'inactivité pour votre sécurité.")
+      alert("⚠️ Session expirée après 1 minutes d'inactivité pour votre sécurité.")
     }
     window.location.href = '/login'
   }, [])
@@ -84,7 +84,7 @@ export default function LogicielFES() {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         handleLogout("timeout");
-      }, 300000); 
+      }, 60000); 
     };
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     if (sessionActive) {
@@ -98,8 +98,9 @@ export default function LogicielFES() {
   }, [sessionActive, handleLogout]);
 
   // --- 3. LOGIQUE MÉTIER ---
+const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.site] || {}) : [];
 
-  const modalites = (fiche.site && TARIFS_OFFICIELS[fiche.site]) 
+  const modalites = (fiche.site && TARIFS_OFFICIELS[fiche.site] && TARIFS_OFFICIELS[fiche.site][fiche.dimension]) 
     ? TARIFS_OFFICIELS[fiche.site][fiche.dimension] 
     : { total: 0, acompte: 0, mensualite: 0 };
 
@@ -122,14 +123,14 @@ export default function LogicielFES() {
   }
 
   const nouveauDossier = () => {
-    if (confirm("Voulez-vous vraiment effacer le formulaire pour un nouveau dossier ?")) {
+    if (confirm("Effacer le formulaire pour un nouveau dossier ?")) {
       window.location.reload(); 
     }
   }
 
   const imprimerFiche = () => {
     if (!fiche.id) {
-      alert("⚠️ Action impossible : Vous devez d'abord ENREGISTRER le dossier avant de pouvoir l'imprimer.");
+      alert("Action impossible : ENREGISTRER le dossier avant de l'imprimer.");
       return;
     }
     window.print();
@@ -273,14 +274,25 @@ export default function LogicielFES() {
               <input name="num_acte_vente" value={fiche.num_acte_vente} placeholder="N° ACTE DE VENTE" onChange={handleChange} className="border-b border-slate-200 py-2 text-xs outline-none" />
             </div>
           </section>
-
-          <section className="space-y-4">
+<section className="space-y-4">
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">IV. Site & Dimensions</h2>
             <div className="space-y-4">
               <select name="site" value={fiche.site} onChange={handleChange} className="w-full border-b-2 border-blue-200 py-2 font-bold text-blue-900 outline-none bg-white print:hidden">
                 <option value="">-- CHOISIR LE SITE --</option>
-                <option value="NDJILI BRASSERIE">NDJILI BRASSERIE</option>
+                {Object.keys(TARIFS_OFFICIELS).map(siteName => (
+                  <option key={siteName} value={siteName}>{siteName}</option>
+                ))}
               </select>
+
+              {fiche.site && (
+                <select name="dimension" value={fiche.dimension} onChange={handleChange} className="w-full border-b-2 border-green-200 py-2 font-bold text-green-900 outline-none bg-white print:hidden">
+                  {dimensionsDisponibles.map(dim => (
+                    <option key={dim} value={dim}>{dim} (m²)</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Affichage des tarifs automatiques */}
               {fiche.site && (
                 <div className="flex justify-between items-center bg-blue-50 p-2 border border-blue-100 rounded-lg print:border-slate-900 print:border-2">
                   <div className="flex flex-col">
