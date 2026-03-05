@@ -26,14 +26,17 @@ export default function LogicielFES() {
     id: null,
     num_fiche: '',
     noms: '', 
+    genre: 'M', 
+    date_souscription: new Date().toISOString().split('T')[0], 
     num_piece_id: '',
     employeur: '', 
     matricule: '',
     fonction: '',
-    avenue_num: '', quartier: '', commune: '', email: '', telephone: '',
+    avenue_num: '', quartier: '', commune: '', email: '', telephone: '+243', telephone_2: '+243',
     num_parcelle: '', num_cadastral: '', 
     num_acte_vente: '',
-    site: '', dimension: '15x20'
+    site: '', dimension: '15x20',
+    nombre_parcelles: 1
   })
 
   const [paiements, setPaiements] = useState<Paiement[]>([])
@@ -104,9 +107,17 @@ export default function LogicielFES() {
   // --- 3. LOGIQUE MÉTIER ---
   const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.site] || {}) : [];
 
-  const modalites = (fiche.site && TARIFS_OFFICIELS[fiche.site] && TARIFS_OFFICIELS[fiche.site][fiche.dimension]) 
+  const baseModalites = (fiche.site && TARIFS_OFFICIELS[fiche.site] && TARIFS_OFFICIELS[fiche.site][fiche.dimension]) 
     ? TARIFS_OFFICIELS[fiche.site][fiche.dimension] 
     : { total: 0, acompte: 0, mensualite: 0 };
+
+  // Calcul proportionnel selon le nombre de parcelles
+  const nbP = parseInt(fiche.nombre_parcelles.toString()) || 1;
+  const modalites = {
+    total: baseModalites.total * nbP,
+    acompte: baseModalites.acompte * nbP,
+    mensualite: baseModalites.mensualite * nbP
+  };
 
   const executerRecherche = async () => {
     if (!recherche) return;
@@ -292,8 +303,15 @@ export default function LogicielFES() {
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">I. Références Identitaires</h2>
             <div className="space-y-4">
               <input name="noms" value={fiche.noms} placeholder="NOMS" onChange={handleChange} className="w-full border-b border-slate-300 py-2 uppercase outline-none focus:border-blue-900" />
+              <div className="grid grid-cols-2 gap-4 text-blue-900 font-black text-xs uppercase">
+  <select name="genre" value={fiche.genre} onChange={handleChange} className="w-full border-b border-slate-300 py-2 outline-none focus:border-blue-900 font-medium">
+    <option value="M">HOMME (M)</option>
+    <option value="F">FEMME (F)</option>
+  </select>
+  <input type="date" name="date_souscription" value={fiche.date_souscription} onChange={handleChange} className="w-full border-b border-slate-300 py-2 outline-none focus:border-blue-900" />
+</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <input name="employeur" value={fiche.employeur} placeholder="EMPLOYEUR" onChange={handleChange} className="w-full uppercase border-b border-slate-200 py-2 text-sm outline-none" />
+                <input name="employeur" value={fiche.employeur} placeholder="EMPLOYEUR" onChange={handleChange} required className="w-full uppercase border-b border-slate-200 py-2 text-sm outline-none" />
                 <input name="matricule" value={fiche.matricule} placeholder="MATRICULE / C. DE SERVICE" onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -310,14 +328,36 @@ export default function LogicielFES() {
                 <input name="quartier" value={fiche.quartier} placeholder="QUARTIER" onChange={handleChange} className="w-full border-b border-slate-200 uppercase py-2 text-sm outline-none" />
                 <input name="commune" value={fiche.commune} placeholder="COMMUNE" onChange={handleChange} className="w-full border-b uppercase border-slate-200 py-2 text-sm outline-none" />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-  <div className="sm:col-span-1">
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+  <div className="relative">
     <input 
       name="telephone" 
       value={fiche.telephone} 
-      placeholder="TÉLÉPHONE" 
-      onChange={handleChange} 
-      className="w-full border-b border-slate-200 py-2 text-sm outline-none focus:border-blue-500" 
+      onChange={(e) => {
+      const val = e.target.value;
+      if (!val.startsWith('+243')) {
+        setFiche({ ...fiche, telephone: '+243' });
+      } else {
+        handleChange(e);
+      }
+    }}
+      className="w-full border-b border-slate-200 pt-5 pb-1 text-sm outline-none focus:border-blue-900 font-bold" 
+    />
+  </div>
+
+  <div className="relative">
+    <input 
+      name="telephone_2" 
+      value={fiche.telephone_2} 
+      onChange={(e) => {
+      const val = e.target.value;
+      if (!val.startsWith('+243')) {
+        setFiche({ ...fiche, telephone: '+243' });
+      } else {
+        handleChange(e);
+      }
+    }}
+      className="w-full border-b border-slate-200 pt-5 pb-1 text-sm outline-none focus:border-blue-900 font-bold" 
     />
   </div>
 
@@ -344,6 +384,17 @@ export default function LogicielFES() {
           </section>
           <section className="space-y-4">
             <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">IV. Site & Dimensions</h2>
+            <div className="flex items-center px-2 gap-2 mb-2  rounded border border-slate-200">
+  <label className="font-medium uppercase text-sm text-gray-400 outline-none">Nombre de parcelles :</label>
+  <input 
+    type="number" 
+    name="nombre_parcelles" 
+    min="1" 
+    value={fiche.nombre_parcelles} 
+    onChange={handleChange} 
+    className="border-b-2 bg-transparent  font-black text-center outline-none"
+  />
+</div>
             <div className="space-y-4">
               <select name="site" value={fiche.site} onChange={handleChange} className="w-full border-b-2 border-blue-200 py-2 font-bold text-blue-900 outline-none bg-white print:hidden">
                 <option value="">-- CHOISIR LE SITE --</option>
