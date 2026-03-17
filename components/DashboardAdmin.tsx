@@ -12,22 +12,31 @@ interface BilanSouscripteur {
   site: string;
   telephone: string; 
   telephone_2: string; 
+  nombre_parcelles?: number;
+  dimension?: string;
   quotite_mensuelle: number; 
   date_souscription: string;
   acompte_initial: number;
   prix_total: number;
   total_verse: number;
+  derniere_date_paiement?: string;
+  dernier_paiement?: string | null; 
 }
 
 export default function DashboardAdmin() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  
   const [loading, setLoading] = useState(false);
+  
   const [liste, setListe] = useState<BilanSouscripteur[]>([]);
   const [filtreMois, setFiltreMois] = useState<number | null>(null);
   const [filtreCategorie, setFiltreCategorie] = useState<'TOUS' | 'MILITAIRE' | 'CIVIL'>('TOUS');
+  
+  const [dateDebut, setDateDebut] = useState('');
+  const [dateFin, setDateFin] = useState('');
+  const [pageActuelle, setPageActuelle] = useState(1);
+  const parPage = 100;
 
   const handleAdminLogin = async () => {
     setLoading(true);
@@ -35,11 +44,8 @@ export default function DashboardAdmin() {
       email: adminEmail,
       password: adminPassword,
     });
-
-    const EMAIL_AUTORISE = "coordon@fes.com"; 
-
-    if (error || data.user?.email !== EMAIL_AUTORISE) {
-      alert("Accès refusé. Identifiants incorrects.");
+    if (error || data.user?.email !== "coordon@fes.com") {
+      alert("Accès refusé.");
     } else {
       setIsAdmin(true);
       chargerDonnees();
@@ -47,78 +53,136 @@ export default function DashboardAdmin() {
     setLoading(false);
   };
 
-  const chargerDonnees = async () => {
-    setLoading(true);
-    const { data: souscripteurs } = await supabase.from('souscripteurs').select('*');
-    const { data: paiements } = await supabase.from('paiements').select('num_fiche, montant');
+const chargerDonnees = async () => {
+  setLoading(true);
+  
+  const { data, error } = await supabase
+    .from('souscripteurs') 
+    .select(`
+      *,
+      paiements (
+        montant,
+        date_paiement
+      )
+    `)
+    .order('num_fiche', { ascending: true });
 
-    if (souscripteurs) {
-      const bilanComplet = souscripteurs.map(s => {
-        const totalPaiements = paiements
-          ?.filter(p => p.num_fiche === s.num_fiche)
-          .reduce((acc, curr) => acc + curr.montant, 0) || 0;
-        
-        return {
-          ...s,
-          total_verse: totalPaiements + (s.acompte_initial || 0)
-        };
-      });
-      setListe(bilanComplet);
-    }
+  if (error) {
+    alert("Erreur de chargement: " + error.message);
     setLoading(false);
-  };
+    return;
+  }
 
+  if (data) {
+    const bilanComplet = data.map((s: any) => {
+      const sesPaiements = s.paiements || [];
+      
+      const totalPaiements = sesPaiements.reduce((acc: number, curr: any) => acc + (Number(curr.montant) || 0), 0);
+      
+      const dateDernier = sesPaiements.length > 0 
+        ? sesPaiements.sort((a: any, b: any) => 
+            new Date(b.date_paiement).getTime() - new Date(a.date_paiement).getTime()
+          )[0].date_paiement 
+        : null;
+
+      return {
+        ...s,
+        total_verse: totalPaiements + (Number(s.acompte_initial) || 0),
+        dernier_paiement: dateDernier, 
+        derniere_date_paiement: dateDernier ? new Date(dateDernier).toLocaleDateString('fr-FR') : 'Aucun'
+      };
+    });
+    
+    setListe(bilanComplet);
+  }
+  setLoading(false);
+};
   const calculerRetard = (s: BilanSouscripteur) => {
+    const moisNoms = ["Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
     const debut = new Date(s.date_souscription);
     const aujourdhui = new Date();
-    const moisEcoules = (aujourdhui.getFullYear() - debut.getFullYear()) * 12 + (aujourdhui.getMonth() - debut.getMonth());
-    const attenduTheorique = (s.acompte_initial || 0) + (Math.max(0, moisEcoules) * (s.quotite_mensuelle || 0));
-    const detteArgent = attenduTheorique - s.total_verse;
-    const moisDeRetard = s.quotite_mensuelle > 0 ? Math.max(0, Math.floor(detteArgent / s.quotite_mensuelle)) : 0;
-    return { moisDeRetard, detteArgent };
+    const jourSouscription = debut.getDate();
+
+    let moisEcoules = (aujourdhui.getFullYear() - debut.getFullYear()) * 12 + (aujourdhui.getMonth() - debut.getMonth());
+    if (aujourdhui.getDate() < jourSouscription) moisEcoules--;
+    moisEcoules = Math.max(0, moisEcoules);
+
+    const montantPourMensualites = Math.max(0, s.total_verse - (s.acompte_initial || 0));
+    const nbMoisCouverts = s.quotite_mensuelle > 0 ? Math.floor(montantPourMensualites / s.quotite_mensuelle) : 0;
+    
+    const dateCouverture = new Date(debut);
+    dateCouverture.setMonth(debut.getMonth() + nbMoisCouverts);
+
+    const moisDeRetardNb = Math.max(0, moisEcoules - nbMoisCouverts);
+    let moisEnRetardListe: string[] = [];
+    
+    if (moisDeRetardNb > 0) {
+      for (let i = 1; i <= moisDeRetardNb; i++) {
+        const d = new Date(dateCouverture);
+        d.setMonth(dateCouverture.getMonth() + i);
+        moisEnRetardListe.push(`${moisNoms[d.getMonth()]} ${d.getFullYear()}`);
+      }
+    }
+
+    return { 
+      moisDeRetard: moisDeRetardNb, 
+      detteArgent: Math.max(0, (moisEcoules * s.quotite_mensuelle) + (s.acompte_initial || 0) - s.total_verse), 
+      moisEnRetardTexte: moisEnRetardListe.join(", "),
+      couvertJusquau: dateCouverture.toLocaleDateString()
+    };
   };
 
   const listeFiltrée = liste.filter(s => {
     const { moisDeRetard } = calculerRetard(s);
-    const matchMois = filtreMois === null ? true : (filtreMois === 3 ? moisDeRetard >= 3 : moisDeRetard === filtreMois);
     const matchCat = filtreCategorie === 'TOUS' ? true : s.categorie === filtreCategorie;
-    return matchMois && matchCat;
+    const matchMois = filtreMois === null ? true : (filtreMois === 3 ? moisDeRetard >= 3 : moisDeRetard === filtreMois);
+    const sDate = new Date(s.date_souscription).getTime();
+    const dDeb = dateDebut ? new Date(dateDebut).getTime() : null;
+    const dFin = dateFin ? new Date(dateFin).getTime() : null;
+    const matchDate = (!dDeb || sDate >= dDeb) && (!dFin || sDate <= dFin);
+    return matchCat && matchMois && matchDate;
   });
+
+  const totalPages = Math.ceil(listeFiltrée.length / parPage);
+  const debutIndex = (pageActuelle - 1) * parPage;
+  const finIndex = debutIndex + parPage;
+  const donneesAffichees = listeFiltrée.slice(debutIndex, finIndex);
 
   const exportToExcel = () => {
     const dataToExport = listeFiltrée.map(s => {
-      const { moisDeRetard, detteArgent } = calculerRetard(s);
+      const { moisDeRetard, detteArgent, moisEnRetardTexte, couvertJusquau } = calculerRetard(s);
       return {
         "Fiche N°": s.num_fiche,
         "Nom Complet": s.noms,
+        "Dernier Paiement": s.dernier_paiement || "N/A",
+        "Progression": `${s.total_verse.toFixed(2)} / ${s.prix_total.toFixed(2)} $`, 
+        "Pourcentage": ((s.total_verse / s.prix_total) * 100).toFixed(2) + "%",
         "Téléphone": s.telephone,
-        "Telephone 2": s.telephone_2,
-        "Catégorie": s.categorie,
-        "Site": s.site,
-        "Mensualité": s.quotite_mensuelle + " $",
-        "Total Versé": s.total_verse + " $",
-        "Dette ($)": detteArgent.toFixed(2) + " $",
+        "Nb Parcelles": s.nombre_parcelles || 1, 
+        "Dimensions": s.dimension || "N/A",      
+        "Date Souscription": s.date_souscription,
+        "Couvert Jusqu'au": couvertJusquau,
+        "Mois Impayés": moisEnRetardTexte || "Aucun",
+        "Total Versé ($)": s.total_verse,
+        "Dette Actuelle ($)": detteArgent.toFixed(2),
         "Mois de Retard": moisDeRetard
       };
     });
-
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Recouvrement");
-    
-    const fileName = `Export_${filtreCategorie}_Retard_${filtreMois ?? 'Global'}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+    XLSX.writeFile(workbook, `FES_RECOUVREMENT_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (!isAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center p-4">
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-blue-900">
-          <h2 className="text-2xl font-black text-blue-900 mb-6 uppercase text-center">Accès Administrateur</h2>
-          <input type="email" placeholder="Email Coordon" className="w-full p-4 bg-slate-100 rounded-xl mb-3 outline-none focus:ring-2 ring-blue-500 font-bold" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
-          <input type="password" placeholder="Mot de passe" className="w-full p-4 bg-slate-100 rounded-xl mb-6 outline-none focus:ring-2 ring-blue-500 font-bold" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
-          <button onClick={handleAdminLogin} disabled={loading} className="w-full bg-blue-900 text-white p-4 rounded-xl font-black uppercase hover:bg-black transition-all">
-            {loading ? "Vérification..." : "Se Connecter"}
+          <h2 className="text-2xl font-black text-blue-900 mb-6 uppercase text-center">Admin SYGMA</h2>
+          <input type="email" placeholder="Email" className="w-full p-4 bg-slate-100 rounded-xl mb-3 outline-none" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
+          <input type="password" placeholder="Pass" className="w-full p-4 bg-slate-100 rounded-xl mb-6 outline-none" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
+          <button onClick={handleAdminLogin} disabled={loading} className="w-full bg-blue-900 text-white p-4 rounded-xl font-black uppercase">
+            {loading ? "Chargement..." : "Entrer"}
           </button>
         </div>
       </div>
@@ -126,93 +190,178 @@ export default function DashboardAdmin() {
   }
 
   return (
-    <div className="max-w-[1200px] mx-auto p-4 animate-in fade-in duration-700">
-      
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-slate-800 uppercase italic leading-none">Dashboard Admin / Recouvrement</h1>
-          <p className="text-blue-600 text-[10px] font-black uppercase tracking-widest mt-1">Fondation El-Shaddaï / MBA</p>
-        </div>
+  <div className="min-h-screen bg-slate-50 pb-40"> 
+    
+    <div className="max-w-[1250px] mx-auto p-4 pt-8">
+      <h1 className="text-3xl font-black text-slate-800 uppercase italic leading-none">Gestion / Recouvrement</h1>
+    
+    </div>
 
-        <div className="flex gap-2">
-            <button onClick={exportToExcel} className="bg-green-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-green-200 hover:bg-green-700 transition-all flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H5a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Exporter 
-            </button>
-        </div>
-      </div>
-
-      {/* FILTRES PAR CATÉGORIE */}
-      <div className="flex bg-white p-1 rounded-2xl shadow-sm border border-slate-200 w-fit mb-6">
-          {['TOUS', 'MILITAIRE', 'CIVIL'].map((c) => (
-            <button key={c} onClick={() => setFiltreCategorie(c as any)} className={`px-6 py-2 rounded-xl text-[10px] font-black transition-all ${filtreCategorie === c ? 'bg-blue-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>{c}</button>
-          ))}
-      </div>
-
-      {/* CARTES DE STATUT (Filtres Mois) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <button onClick={() => setFiltreMois(null)} className={`p-5 rounded-3xl border-2 transition-all text-left ${filtreMois === null ? 'border-blue-900 bg-blue-900 text-white' : 'border-white bg-white text-slate-600 shadow-sm'}`}>
-          <div className="text-2xl font-black">{liste.filter(s => (filtreCategorie === 'TOUS' ? true : s.categorie === filtreCategorie)).length}</div>
-          <div className="text-[10px] uppercase font-bold opacity-60 italic">SOUSCRIPTEURS</div>
-        </button>
-        {/* ... Boutons 1, 2, 3 mois identiques à ton code précédent mais avec filtreCategorie intégré ... */}
-        <button onClick={() => setFiltreMois(1)} className={`p-5 rounded-3xl border-2 transition-all text-left ${filtreMois === 1 ? 'border-orange-500 bg-orange-500 text-white' : 'border-white bg-white text-orange-600 shadow-sm'}`}>
-          <div className="text-2xl font-black">1 MOIS</div>
-          <div className="text-[10px] uppercase font-bold opacity-60">Relance</div>
-        </button>
-        <button onClick={() => setFiltreMois(2)} className={`p-5 rounded-3xl border-2 transition-all text-left ${filtreMois === 2 ? 'border-red-500 bg-red-500 text-white' : 'border-white bg-white text-red-600 shadow-sm'}`}>
-          <div className="text-2xl font-black">2 MOIS</div>
-          <div className="text-[10px] uppercase font-bold opacity-60">Critique</div>
-        </button>
-        <button onClick={() => setFiltreMois(3)} className={`p-5 rounded-3xl border-2 transition-all text-left ${filtreMois === 3 ? 'border-black bg-black text-white' : 'border-white bg-white text-black shadow-sm'}`}>
-          <div className="text-2xl font-black">3 MOIS+</div>
-          <div className="text-[10px] uppercase font-bold opacity-60">Contentieux</div>
-        </button>
-      </div>
-
-      {/* TABLEAU */}
-      <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-slate-100">
+    <div className="max-w-[1250px] mx-auto p-4 animate-in fade-in duration-700">
+      <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-slate-100 mb-20">
         <table className="w-full text-left">
           <thead>
             <tr className="bg-slate-900 text-white">
-              <th className="p-5 text-[10px] font-black uppercase tracking-widest">NOMS / Contacts</th>
-              <th className="p-5 text-[10px] font-black uppercase text-center">Catégorie</th>
-              <th className="p-5 text-[10px] font-black uppercase text-right">Mensualité</th>
-              <th className="p-5 text-[10px] font-black uppercase text-right">Payé</th>
-              <th className="p-5 text-[10px] font-black uppercase text-right">Dette ($)</th>
-              <th className="p-5 text-[10px] font-black uppercase text-center">État</th>
+              <th className="p-5 text-[10px] font-black uppercase tracking-widest">SOUSCRIPTEUR</th>
+              <th className="p-5 text-[10px] font-black uppercase text-center border-x border-slate-800/10">Dernier Versement</th>
+              <th className="p-5 text-[10px] font-black uppercase text-center">COUVERTURE</th>
+              <th className="p-5 text-[10px] font-black uppercase text-right">TOTAL VERSÉ</th>
+              <th className="p-5 text-[10px] font-black uppercase text-right">DETTE MENSUELLE</th>
+              <th className="p-5 text-[10px] font-black uppercase text-center">ÉTAT</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {listeFiltrée.map(s => {
-              const { moisDeRetard, detteArgent } = calculerRetard(s);
-              return (
-                <tr key={s.id} className="hover:bg-slate-50 transition-all">
-                  <td className="p-5">
-                    <div className="font-black text-slate-800 uppercase">{s.noms}</div>
-                    <div className="text-[10px] font-bold text-blue-600">N° {s.num_fiche} — Tel: {s.telephone || 'N/A'} — Tel_2: {s.telephone_2 || 'N/A'} </div>
-                  </td>
-                  <td className="p-5 text-center"><span className="text-[10px] font-black px-2 py-1 bg-slate-100 rounded text-slate-500">{s.categorie}</span></td>
-                  <td className="p-5 text-right font-bold text-slate-700">{s.quotite_mensuelle} $</td>
-                  <td className="p-5 text-right font-bold text-green-600">{s.total_verse.toFixed(2)} $</td>
-                  <td className="p-5 text-right font-black text-red-600">-{detteArgent.toFixed(2)} $</td>
-                  <td className="p-5 text-center">
-                    <span className={`px-4 py-1.5 rounded-full text-[9px] font-black ${
-                      moisDeRetard === 0 ? 'bg-green-100 text-green-700' :
-                      moisDeRetard >= 3 ? 'bg-black text-white' : 
-                      moisDeRetard === 2 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {moisDeRetard === 0 ? 'À JOUR' : `${moisDeRetard} MOIS`}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
+            {donneesAffichees.map((s, index) => {
+  const { moisDeRetard, detteArgent, moisEnRetardTexte, couvertJusquau } = calculerRetard(s);
+  return (
+    <tr key={s.id} className="hover:bg-slate-50 transition-all border-b border-slate-50">
+      <td className="p-4">
+        <div className="flex items-start gap-3">
+          <span className="text-[10px] font-black text-slate-300 mt-1">#{debutIndex + index + 1}</span>
+          <div>
+            <div className="font-black text-slate-800 uppercase text-sm leading-tight">{s.noms}</div>
+            <div className="text-[10px] font-bold text-blue-600 uppercase mt-1">
+              Fiche {s.num_fiche} — {s.telephone}
+            </div>
+            <div className="flex gap-2 mt-1">
+              <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[9px] font-black uppercase">
+                {s.nombre_parcelles || 1} Parc.
+              </span>
+              <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[9px] font-black uppercase">
+                Dim: {s.dimension || 'N/A'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="p-4 text-center border-x border-slate-50">
+  {s.dernier_paiement ? (
+    <div className="flex flex-col items-center">
+      <div className="text-[11px] font-black text-slate-700 uppercase">
+        {new Date(s.dernier_paiement).toLocaleDateString('fr-FR')}
+      </div>
+      <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full mt-1 ${
+        (new Date().getTime() - new Date(s.dernier_paiement).getTime()) / (1000 * 3600 * 24) > 30 
+        ? 'bg-red-50 text-red-500' 
+        : 'bg-green-50 text-green-600'
+      }`}>
+        {(new Date().getTime() - new Date(s.dernier_paiement).getTime()) / (1000 * 3600 * 24) > 30 
+          ? 'Inactif > 30j' 
+          : 'Actif'}
+      </span>
+    </div>
+  ) : (
+    <span className="text-[9px] font-black text-slate-300 uppercase italic">Aucun historique</span>
+  )}
+</td>
+      <td className="p-4 text-center">
+        <div className="text-[9px] font-black text-slate-400 uppercase">Couvert jusqu'au</div>
+        <div className={`text-xs font-black ${moisDeRetard > 0 ? 'text-red-600' : 'text-green-600'}`}>
+          {couvertJusquau}
+        </div>
+        <div className="text-[8px] text-slate-400 font-medium italic">Souscrit le {new Date(s.date_souscription).toLocaleDateString()}</div>
+      </td>
+      <td className="p-4 text-right">
+  <div className="flex flex-col items-end">
+    <div className="text-[11px] font-black text-slate-700">
+      {s.total_verse.toFixed(2)}$ <span className="text-slate-300 mx-0.5">/</span> {s.prix_total.toFixed(2)}$
+    </div>
+    <div className="text-[9px] text-blue-600 font-bold uppercase tracking-tighter">
+      {((s.total_verse / s.prix_total) * 100).toFixed(0)}% du contrat
+    </div>
+    <div className="w-24 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
+      <div 
+        className="h-full bg-green-500 rounded-full" 
+        style={{ width: `${Math.min(100, (s.total_verse / s.prix_total) * 100)}%` }}
+      />
+    </div>
+  </div>
+</td>
+      <td className="p-4 text-right">
+        <div className="text-sm font-black text-red-600">-{detteArgent.toFixed(2)} $</div>
+        <div className="text-[9px] text-red-400 font-bold uppercase italic">à payer</div>
+      </td>
+      <td className="p-4 text-center">
+        <div className={`inline-block px-3 py-1 rounded-full text-[9px] font-black ${
+          moisDeRetard === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+        }`}>
+          {moisDeRetard === 0 ? 'À JOUR' : `${moisDeRetard} MOIS DUS`}
+        </div>
+        {moisDeRetard > 0 && (
+          <div className="text-[8px] font-black text-red-400 mt-1 uppercase tracking-tighter">
+            {moisEnRetardTexte}
+          </div>
+        )}
+      </td>
+    </tr>
+  )
+})}
           </tbody>
         </table>
       </div>
     </div>
-  )
+
+    <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] p-4 z-50">
+      <div className="max-w-[1250px] mx-auto flex flex-col gap-4">
+        
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-xl">
+              <span className="text-[9px] font-black text-slate-500 uppercase px-2">Période</span>
+              <input type="date" className="bg-transparent text-[10px] font-bold outline-none" value={dateDebut} onChange={(e) => {setDateDebut(e.target.value); setPageActuelle(1)}} />
+              <span className="text-slate-400 text-[9px]">au</span>
+              <input type="date" className="bg-transparent text-[10px] font-bold outline-none" value={dateFin} onChange={(e) => {setDateFin(e.target.value); setPageActuelle(1)}} />
+            </div>
+
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              {['TOUS', 'MILITAIRE', 'CIVIL'].map((c) => (
+                <button key={c} onClick={() => {setFiltreCategorie(c as any); setPageActuelle(1)}} className={`px-4 py-1.5 rounded-lg text-[9px] font-black transition-all ${filtreCategorie === c ? 'bg-blue-900 text-white shadow-md' : 'text-slate-400'}`}>{c}</button>
+              ))}
+            </div>
+
+            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+              <button onClick={() => {setFiltreMois(null); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === null ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>TOUS</button>
+              <button onClick={() => {setFiltreMois(1); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === 1 ? 'bg-orange-400 text-white' : 'text-slate-400'}`}>1M</button>
+              <button onClick={() => {setFiltreMois(2); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === 2 ? 'bg-orange-600 text-white' : 'text-slate-400'}`}>2M</button>
+              <button onClick={() => {setFiltreMois(3); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === 3 ? 'bg-red-600 text-white' : 'text-slate-400'}`}>3M+</button>
+            </div>
+          </div>
+
+          <button onClick={exportToExcel} className="bg-green-600 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-md hover:bg-green-700 transition-all flex items-center gap-2">
+            Exporter {listeFiltrée.length} dossiers
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">
+            Affichage <span className="text-blue-600">{debutIndex + 1} - {Math.min(finIndex, listeFiltrée.length)}</span> sur {listeFiltrée.length}
+          </span>
+          
+          <div className="flex gap-2">
+            <button 
+              disabled={pageActuelle === 1}
+              onClick={() => {setPageActuelle(p => p - 1); window.scrollTo(0,0)}}
+              className="px-4 py-2 bg-slate-100 rounded-lg text-[9px] font-black disabled:opacity-30 uppercase"
+            >
+              Précédent
+            </button>
+            <div className="flex items-center px-4 bg-slate-900 text-white rounded-lg text-[10px] font-black">
+              PAGE {pageActuelle} / {totalPages || 1}
+            </div>
+            <button 
+              disabled={pageActuelle === totalPages || totalPages === 0}
+              onClick={() => {setPageActuelle(p => p + 1); window.scrollTo(0,0)}}
+              className="px-4 py-2 bg-slate-100 rounded-lg text-[9px] font-black disabled:opacity-30 uppercase"
+            >
+              Suivant
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+);
 }

@@ -247,6 +247,22 @@ const handleSave = async () => {
 
 
  return (
+
+  <div id="fiche-officielle" className="relative max-w-[1000px] mx-auto bg-white shadow-2xl rounded-sm border-t-[12px] border-blue-900 p-4 md:p-10 print:border-t-0 print:shadow-none overflow-hidden">
+  
+  <div className="absolute top-0 right-0 overflow-hidden w-32 h-32 pointer-events-none print:block">
+    <div className={`
+      absolute top-7 -right-8 w-40 py-1.5 
+      rotate-45 text-center shadow-lg
+      text-[10px] font-black uppercase tracking-widest
+      ${type === 'MILITAIRE' 
+        ? 'bg-red-700 text-white border-y-2 border-red-900' 
+        : 'bg-slate-800 text-white border-y-2 border-slate-600'}
+    `}>
+      {type}
+    </div>
+  </div>
+  
      <div className="min-h-screen bg-slate-100 p-2 md:p-8 font-sans text-slate-800">
        
        <div className="max-w-[1000px] mx-auto mb-4 flex flex-col md:flex-row gap-2 print:hidden">
@@ -557,5 +573,6 @@ const handleSave = async () => {
        )}
  
      </div>
+      </div>
    )
 }

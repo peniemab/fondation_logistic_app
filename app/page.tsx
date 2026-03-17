@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
-// Imports des composants
 import HubAccueil from '@/components/HubAccueil'
 import Navigation from '@/components/Navigation'
 import FormulaireCaisse from '@/components/FormulaireCaisse'
