@@ -43,12 +43,10 @@ const session = !!user
 
   const isLoginPage = request.nextUrl.pathname.startsWith('/login')
 
-  // CAS 1 : Pas de session et tente d'accéder au logiciel -> Direction LOGIN
   if (!session && !isLoginPage) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // CAS 2 : Déjà une session et tente d'aller sur LOGIN -> Direction ACCUEIL
   if (session && isLoginPage) {
     return NextResponse.redirect(new URL('/', request.url))
   }

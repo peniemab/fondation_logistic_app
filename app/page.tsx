@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
 import HubAccueil from '@/components/HubAccueil'
 import Navigation from '@/components/Navigation'
@@ -10,6 +11,7 @@ import DashboardAdmin from '@/components/DashboardAdmin'
 export default function LogicielFES() {
   const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin'>('hub');
   const [sessionActive, setSessionActive] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     const checkUser = async () => {
@@ -21,7 +23,7 @@ export default function LogicielFES() {
       }
     };
     checkUser();
-  }, []);
+  }, [router]);
 
   if (!sessionActive) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-bold">VÉRIFICATION...</div>;
 
