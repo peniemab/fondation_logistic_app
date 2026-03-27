@@ -5,7 +5,7 @@ const handleLogout = async () => {
   const confirmLogout = confirm("Voulez-vous vraiment vous déconnecter ?");
   if (confirmLogout) {
     await supabase.auth.signOut();
-    window.location.href = '/login'; // On vide tout et on rentre au poste
+    window.location.href = '/login';
   }
 };
 export default function Navigation({ activeView, setActiveView }: { activeView: string, setActiveView: (v: any) => void }) {
