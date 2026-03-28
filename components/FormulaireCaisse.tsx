@@ -84,26 +84,24 @@ export default function FormulaireCaisse({ type }: Props) {
      }
 
 
-  const fetchLastID = async () => {
-      const { data } = await supabase
-        .from('souscripteurs')
-        .select('num_fiche')
-        .order('num_fiche', { ascending: false })
-        .limit(1)
-      
-      const lastNum = data?.[0]?.num_fiche ? parseInt(data[0].num_fiche) : 0
-      const nextId = lastNum + 1
-      
-      setFiche(prev => ({ 
-        ...prev, 
-        id: null,
-        num_fiche: nextId.toString().padStart(3, '0') 
-      }))
-    }
+ const fetchLastID = async () => {
+  const { data } = await supabase
+    .from('souscripteurs')
+    .select('num_fiche')
+    .order('num_fiche', { ascending: false })
+    .limit(1)
+    
+  const lastNum = data?.[0]?.num_fiche || 0;
+  const nextId = parseInt(lastNum.toString()) + 1;
+  
+  setFiche(prev => ({ 
+    ...prev, 
+    num_fiche: nextId.toString().padStart(6, '0') 
+  }))
+}
 
   useEffect(() => { if (!fiche.id) fetchLastID() }, [type])
 
-  // --- 2. CALCULS MÉTIER ---
   const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.site] || {}) : [];
   const baseModalites = (fiche.site && TARIFS_OFFICIELS[fiche.site] && TARIFS_OFFICIELS[fiche.site][fiche.dimension]) 
     ? TARIFS_OFFICIELS[fiche.site][fiche.dimension] 
@@ -119,7 +117,6 @@ export default function FormulaireCaisse({ type }: Props) {
   const totalVerse = paiements.reduce((acc, curr) => acc + curr.montant, 0) + (fiche.id ? modalites.acompte : 0);
   const resteAPayer = modalites.total - totalVerse;
 
-  // Calcul du Statut de Recouvrement
   const calculerStatut = () => {
     const debut = new Date(fiche.date_souscription);
     const aujourdhui = new Date();
@@ -135,38 +132,46 @@ export default function FormulaireCaisse({ type }: Props) {
   };
 
   const executerRecherche = async () => {
-      if (!recherche) return;
-      setLoading(true);
-  
-      const { data: resultats, error } = await supabase
-        .from('souscripteurs')
-        .select('*')
-        .or(`num_fiche.eq.${recherche},noms.ilike.%${recherche}%,num_parcelle.eq.${recherche},telephone.eq.${recherche},email.eq.${recherche}`);
-  
-      if (error) {
-        alert("Erreur de recherche");
-      } else if (resultats && resultats.length > 0) {
-        const dossierACharger = resultats[0];
-  
-        if (resultats.length > 1) {
-          alert(`${resultats.length} dossiers trouvés pour "${recherche}".\nAffichage du dossier N° ${dossierACharger.num_fiche}.\n\nPour une autre parcelle, veuillez saisir le numéro de fiche exact.`);
-        }
-  
-        setFiche(dossierACharger);
-  
-        // Récupération des paiements liée à cette fiche précise
-        const { data: pData } = await supabase
-          .from('paiements')
-          .select('*')
-          .eq('num_fiche', dossierACharger.num_fiche)
-          .order('created_at', { ascending: false });
-          
-        setPaiements(pData || []);
-      } else {
-        alert("Aucun souscripteur trouvé.");
-      }
-      setLoading(false);
+  if (!recherche) return;
+  setLoading(true);
+
+  const estUnNombre = /^\d+$/.test(recherche);
+  const rechercheNettoyee = recherche.trim();
+
+  let query = supabase.from('souscripteurs').select('*');
+
+  if (estUnNombre) {
+    query = query.or(`num_fiche.eq.${parseInt(rechercheNettoyee)},telephone.eq.${rechercheNettoyee}`);
+  } else {
+    query = query.or(`noms.ilike.%${rechercheNettoyee}%,email.ilike.%${rechercheNettoyee}%,num_parcelle.ilike.%${rechercheNettoyee}%`);
+  }
+
+  const { data: resultats, error } = await query;
+
+  if (error) {
+    console.error("Détail erreur SQL:", error); 
+    alert("Erreur de recherche : " + error.message);
+  } else if (resultats && resultats.length > 0) {
+    const dossierACharger = resultats[0];
+
+    if (resultats.length > 1) {
+      alert(`${resultats.length} dossiers trouvés. Affichage du N° ${dossierACharger.num_fiche}`);
     }
+
+    setFiche(dossierACharger);
+
+    const { data: pData } = await supabase
+      .from('paiements')
+      .select('*')
+      .eq('num_fiche', dossierACharger.num_fiche) 
+      .order('created_at', { ascending: false });
+      
+    setPaiements(pData || []);
+  } else {
+    alert("Aucun souscripteur trouvé pour : " + recherche);
+  }
+  setLoading(false);
+}
 
 const imprimerFiche = () => {
     if (!fiche.id) {
@@ -182,33 +187,33 @@ const imprimerFiche = () => {
   }
 
 const handleSave = async () => {
-    if (!fiche.noms || !fiche.site) return alert("Le nom et le site sont obligatoires");
-    setLoading(true);
-    
-    const { id, ...donneesNettoyées } = fiche;
-    
-    const payloadFinal = {
-      ...(fiche.id ? fiche : donneesNettoyées), 
-      categorie: type, 
-      prix_total: modalites.total,
-      acompte_initial: modalites.acompte,
-      quotite_mensuelle: modalites.mensualite
-    };
+  if (!fiche.noms || !fiche.site) return alert("Le nom et le site sont obligatoires");
+  setLoading(true);
+  
+  const { id, num_fiche, ...donneesNettoyées } = fiche;
+  
+  const payloadFinal = {
+    ...(fiche.id ? { ...donneesNettoyées, num_fiche } : donneesNettoyées), 
+    categorie: type, 
+    prix_total: modalites.total,
+    acompte_initial: modalites.acompte,
+    quotite_mensuelle: modalites.mensualite
+  };
 
-    const { data, error } = await supabase
-      .from('souscripteurs')
-      .upsert([payloadFinal], { onConflict: 'num_fiche' }) 
-      .select()
-      .single();
+  const { data, error } = await supabase
+    .from('souscripteurs')
+    .upsert([payloadFinal], { onConflict: 'num_fiche' }) 
+    .select()
+    .single();
 
-    if (error) {
-      alert("Erreur : " + error.message);
-    } else {
-      setFiche(data);
-      alert(fiche.id ? "Dossier mis à jour !" : "Nouveau dossier enregistré !");
-    }
-    
-    setLoading(false);
+  if (error) {
+    alert("Erreur : " + error.message);
+  } else {
+    setFiche(data);
+    alert(fiche.id ? "Dossier mis à jour !" : `Nouveau dossier enregistré ! N° Officiel : ${data.num_fiche}`);
+  }
+  
+  setLoading(false);
 };
 
   const handleAdminDelete = async () => {
@@ -277,9 +282,6 @@ const handleSave = async () => {
            <button onClick={executerRecherche} className="flex-1 md:flex-none bg-blue-900 text-white px-8 rounded-lg font-black hover:bg-black transition-all">
              RECHERCHER
            </button>
-           <button onClick={() => handleLogout()} className="bg-red-600 text-white px-4 rounded-lg font-bold text-[10px] uppercase border-2 border-red-700">
-             Quitter
-           </button>
          </div>
        </div>
  
@@ -299,8 +301,8 @@ const handleSave = async () => {
  
            <div className="flex flex-col items-center md:items-end">
              <div className="bg-yellow-700 text-white px-5 py-2 font-black text-sm mb-2 border-2 border-yellow-700 print:text-black print:bg-white print:border-black shadow-lg">
-               FICHE N° {fiche.num_fiche}
-             </div>
+  FICHE N° {fiche.num_fiche.toString().padStart(6, '0')}
+</div>
              <QRCodeSVG value={`FES-N°${fiche.num_fiche}\nNom: ${fiche.noms || '...'}`} size={90} level="M" includeMargin={true} />
            </div>
          </div>

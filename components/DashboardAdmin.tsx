@@ -2,7 +2,8 @@
 
   import React, { useState, useEffect } from 'react'
   import { supabase } from '@/lib/supabase'
-  import * as XLSX from 'xlsx' 
+  import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
   interface BilanSouscripteur {
     id: string;
@@ -28,6 +29,9 @@
     const [adminEmail, setAdminEmail] = useState('');
     const [adminPassword, setAdminPassword] = useState('');
     const [loading, setLoading] = useState(false);
+
+    const [rechercheSuggestive, setRechercheSuggestive] = useState('');
+const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
 
     const [filtreDimension, setFiltreDimension] = useState<'TOUS' | '15x20' | '20x20'>('TOUS');
     const [showExportModal, setShowExportModal] = useState(false);
@@ -141,6 +145,11 @@
 
     const listeFiltrée = liste.filter(s => {
       const { moisDeRetard } = calculerRetard(s);
+
+      const matchRecherche = rechercheSuggestive === '' ? true : 
+    s.noms.toLowerCase().includes(rechercheSuggestive.toLowerCase()) || 
+    s.num_fiche.toString().includes(rechercheSuggestive);
+
       const matchCat = filtreCategorie === 'TOUS' ? true : s.categorie === filtreCategorie;
       const matchMois = filtreMois === null ? true : (filtreMois === 3 ? moisDeRetard >= 3 : moisDeRetard === filtreMois);
       
@@ -150,8 +159,7 @@
       const dDeb = dateDebut ? new Date(dateDebut).getTime() : null;
       const dFin = dateFin ? new Date(dateFin).getTime() : null;
       const matchDate = (!dDeb || sDate >= dDeb) && (!dFin || sDate <= dFin);
-
-      return matchCat && matchMois && matchDate && matchDim;
+      return matchRecherche && matchCat && matchMois && matchDate && matchDim;
     });
 
     const totalPages = Math.ceil(listeFiltrée.length / parPage);
@@ -159,30 +167,121 @@
     const finIndex = debutIndex + parPage;
     const donneesAffichees = listeFiltrée.slice(debutIndex, finIndex);
 
-    const exportToExcel = () => {
-      const dataToExport = listeFiltrée.map(s => {
-        const { moisDeRetard, detteArgent, moisEnRetardTexte } = calculerRetard(s);
-        let obj: any = {};
-        
-        if(colonnesExport.num_fiche) obj["Fiche N°"] = s.num_fiche;
-        if(colonnesExport.noms) obj["Nom Complet"] = s.noms;
-        if(colonnesExport.telephone) obj["Téléphone"] = s.telephone;
-        if(colonnesExport.telephone_2) obj["Téléphone 2"] = s.telephone_2 || "N/A";
-        if(colonnesExport.dimension) obj["Dimension"] = s.dimension;
-        if(colonnesExport.total_verse) obj["Total Versé ($)"] = s.total_verse;
-        if(colonnesExport.dette) obj["Dette ($)"] = detteArgent.toFixed(2);
-        if(colonnesExport.retard) obj["Mois de Retard"] = moisDeRetard;
-        if(colonnesExport.mois_impayes) obj["Mois Impayés"] = moisEnRetardTexte || "Aucun";
-        
-        return obj;
-      });
+    const exportToPDF = () => {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
 
-      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Recouvrement");
-      XLSX.writeFile(workbook, `FES_EXPORT_${new Date().toISOString().split('T')[0]}.xlsx`);
-      setShowExportModal(false);
-    };
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const centreX = pageWidth / 2;
+
+  const mapColonnes: { [key: string]: string } = {
+    num_fiche: "FICHE",
+    noms: "NOM COMPLET",
+    telephone: "TÉLÉPHONE",
+    telephone_2: "TÉLÉPHONE 2",
+    dimension: "DIM.",
+    total_verse: "TOTAL VERSÉ ($)",
+    dette: "DETTE ($)",
+    retard: "RETARD",
+    mois_impayes: "MOIS IMPAYÉS"
+  };
+
+  const colonnesActives = Object.keys(colonnesExport).filter(
+    (key) => (colonnesExport as any)[key] === true
+  );
+
+  const enTetes = colonnesActives.map(key => mapColonnes[key]);
+
+  const corpsTableau = listeFiltrée.map(s => {
+    const { moisDeRetard, detteArgent, moisEnRetardTexte } = calculerRetard(s);
+    
+    return colonnesActives.map(key => {
+      switch (key) {
+        case 'num_fiche': return s.num_fiche;
+        case 'noms': return s.noms.toUpperCase();
+        case 'telephone': return s.telephone;
+        case 'telephone_2': return s.telephone_2 || '-';
+        case 'dimension': return s.dimension || 'N/A';
+        case 'total_verse': return s.total_verse.toFixed(2);
+        case 'dette': return detteArgent.toFixed(2);
+        case 'retard': return moisDeRetard > 0 ? `${moisDeRetard} Mois` : 'À JOUR';
+        case 'mois_impayes': return moisEnRetardTexte || '-';
+        default: return '';
+      }
+    });
+  });
+
+  doc.setFontSize(18);
+  doc.setTextColor(20, 40, 80);
+  doc.setFont("helvetica", "bold");
+  doc.text("FES / MBA - RECOUVREMENT", centreX, 15, { align: 'center' });
+
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(`Généré le : ${new Date().toLocaleDateString('fr-FR')} | Filtres appliqués`, centreX, 22, { align: 'center' });
+
+autoTable(doc, {
+    startY: 30,
+    head: [enTetes],
+    body: corpsTableau,
+    theme: 'striped',
+    margin: { top: 30, left: 14, right: 14 },
+    
+    tableWidth: 'auto', 
+
+    headStyles: { 
+      fillColor: [15, 23, 42], 
+      fontSize: 8, 
+      halign: 'center', 
+      fontStyle: 'bold' 
+    },
+    bodyStyles: { 
+      fontSize: 8, 
+      valign: 'middle', 
+      cellPadding: 4 
+    },
+
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        const colKey = colonnesActives[data.column.index];
+
+        if (['noms', 'telephone', 'telephone_2', 'mois_impayes'].includes(colKey)) {
+          data.cell.styles.halign = 'left';
+        }
+
+        if (['num_fiche', 'dimension', 'retard'].includes(colKey)) {
+          data.cell.styles.halign = 'center';
+        }
+
+        if (['total_verse', 'dette'].includes(colKey)) {
+          data.cell.styles.halign = 'right';
+          if (colKey === 'dette') {
+            data.cell.styles.textColor = [200, 0, 0];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      }
+    },
+
+    styles: { 
+      overflow: 'linebreak',
+      lineWidth: 0.1,
+    },
+    
+    didDrawPage: (data) => {
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      const pWidth = doc.internal.pageSize.getWidth();
+      const pHeight = doc.internal.pageSize.getHeight();
+      doc.text(`Page ${data.pageNumber}`, pWidth - 25, pHeight - 10);
+    }
+  });
+  doc.save(`FES_MBA_CUSTOM_${new Date().toISOString().split('T')[0]}.pdf`);
+  setShowExportModal(false);
+};
 
     if (!isAdmin) {
       return (
@@ -206,6 +305,29 @@
         <h1 className="text-3xl font-black text-slate-800 uppercase italic leading-none">Gestion / Recouvrement</h1>
       
       </div>
+      <div className="max-w-[1250px] mx-auto px-4 mb-6">
+  <div className="relative group">
+    
+    <input
+      type="text"
+      placeholder="Rechercher un nom "
+      className="w-full pl-14 pr-6 py-5 bg-white border-none rounded-[2rem] shadow-xl text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-900/10 transition-all placeholder:text-slate-300 uppercase italic"
+      value={rechercheSuggestive}
+      onChange={(e) => {
+        setRechercheSuggestive(e.target.value);
+        setPageActuelle(1); 
+      }}
+    />
+    {rechercheSuggestive && (
+      <button 
+        onClick={() => setRechercheSuggestive('')}
+        className="absolute inset-y-0 right-0 pr-6 flex items-center text-slate-300 hover:text-red-500"
+      >
+        <span className="text-[10px] font-black uppercase tracking-tighter">Effacer</span>
+      </button>
+    )}
+  </div>
+</div>
 
       <div className="max-w-[1250px] mx-auto p-4 animate-in fade-in duration-700">
         <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-slate-100 mb-20">
@@ -403,7 +525,13 @@
 
         <div className="flex gap-3">
           <button onClick={() => setShowExportModal(false)} className="flex-1 p-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Annuler</button>
-          <button onClick={exportToExcel} className="flex-1 p-4 bg-blue-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-blue-900/20">Télécharger .xlsx</button>
+         {/* Remplace l'ancien bouton par celui-ci */}
+<button 
+  onClick={exportToPDF} 
+  className="flex-1 p-4 bg-blue-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-blue-900/20"
+>
+  Télécharger PDF (A4 Paysage)
+</button>
         </div>
       </div>
     </div>
