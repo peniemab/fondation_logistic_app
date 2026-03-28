@@ -221,7 +221,7 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
 
   doc.setFontSize(10);
   doc.setTextColor(100);
-  doc.text(`Généré le : ${new Date().toLocaleDateString('fr-FR')} | Filtres appliqués`, centreX, 22, { align: 'center' });
+  doc.text(`Généré le : ${new Date().toLocaleDateString('fr-FR')}`, centreX, 22, { align: 'center' });
 
 autoTable(doc, {
     startY: 30,
@@ -530,7 +530,7 @@ autoTable(doc, {
   onClick={exportToPDF} 
   className="flex-1 p-4 bg-blue-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-blue-900/20"
 >
-  Télécharger PDF (A4 Paysage)
+  Télécharger
 </button>
         </div>
       </div>
