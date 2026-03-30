@@ -2,7 +2,6 @@
 
   import React, { useState, useEffect } from 'react'
   import { supabase } from '@/lib/supabase'
-  import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
   interface BilanSouscripteur {
@@ -167,7 +166,8 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
     const finIndex = debutIndex + parPage;
     const donneesAffichees = listeFiltrée.slice(debutIndex, finIndex);
 
-    const exportToPDF = () => {
+    const exportToPDF = async () => {
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',

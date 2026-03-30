@@ -394,7 +394,7 @@ const handleSave = async () => {
            <section className="space-y-4">
              <h2 className="text-blue-900 font-black text-xs uppercase tracking-wider border-b-2 border-blue-900 w-fit pb-1">IV. Site & Dimensions</h2>
              <div className="flex items-center px-2 gap-2 mb-2  rounded border border-slate-200">
-   <label className="font-medium uppercase text-sm text-gray-400 outline-none">Nombre de parcelles :</label>
+   <label className="font-medium uppercase text-sm text-gray-600 outline-none">Nombre de parcelles :</label>
    <input 
      type="number" 
      name="nombre_parcelles" 

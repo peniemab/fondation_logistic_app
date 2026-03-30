@@ -1,5 +1,7 @@
 'use client'
 import { supabase } from '@/lib/supabase'
+import { LogOut } from 'lucide-react'
+import Image from 'next/image'
 
 const handleLogout = async () => {
   const confirmLogout = confirm("Voulez-vous vraiment vous déconnecter ?");
@@ -17,7 +19,14 @@ export default function Navigation({ activeView, setActiveView }: { activeView: 
           onClick={() => setActiveView('hub')} 
           className="flex items-center gap-2 cursor-pointer group"
         >
-          <img src="/FES.jpg" alt="Logo" className="w-8 h-8 rounded-full" />
+<Image 
+  src="/FES.jpg" 
+  alt="Logo Fondation El-Shaddaï / MBA__GESTION__" 
+  width={96} 
+  height={96} 
+  className="rounded-full shadow-lg"
+  priority 
+/>
           <span className="font-black text-blue-900 text-xs tracking-tighter group-hover:text-blue-600 transition-colors">
             Fondation El-Shaddaï / MBA__GESTION__
           </span>
@@ -31,13 +40,11 @@ export default function Navigation({ activeView, setActiveView }: { activeView: 
             Menu Principal
           </button>
           <button 
-  onClick={handleLogout}
-  className="bg-red-600/10 text-red-600 p-2 rounded-xl hover:bg-red-600 hover:text-white transition-all group"
-  title="Déconnexion"
+  onClick={handleLogout} 
+aria-label="Se déconnecter"
+  title="Déconnexion" 
 >
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-  </svg>
+  <LogOut size={20} />
 </button>
         </div>
 
