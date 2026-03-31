@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* On utilise du CSS classique que VS Code comprend sans extension */
 input, select {
   outline: none;
   transition: all 0.2s;

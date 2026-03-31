@@ -6,7 +6,6 @@ export const metadata = {
   description: 'Logiciel de saisie et suivi des souscripteurs',
 }
 
-// On définit le type de children ici : ReactNode
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="fr">
