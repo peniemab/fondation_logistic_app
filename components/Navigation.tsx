@@ -19,14 +19,8 @@ export default function Navigation({ activeView, setActiveView }: { activeView: 
           onClick={() => setActiveView('hub')}
           className="flex items-center gap-2 cursor-pointer group"
         >
-          <Image
-            src="/FES.jpg"
-            alt="Logo Fondation El-Shaddaï / MBA__GESTION__"
-            width={96}
-            height={96}
-            className="rounded-full shadow-lg"
-            priority
-          />
+                  <img src="/FES.jpg" alt="Logo" className="w-24 h-24 mx-auto mb-4 rounded-full shadow-lg" />
+
           <span className="font-black text-blue-900 text-xs tracking-tighter group-hover:text-blue-600 transition-colors">
             Fondation El-Shaddaï / MBA__GESTION__
           </span>
