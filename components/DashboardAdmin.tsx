@@ -63,50 +63,73 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
       setLoading(false);
     };
 
-  const chargerDonnees = async () => {
-    setLoading(true);
-    
-    const { data, error } = await supabase
-      .from('souscripteurs') 
-      .select(`
-        *,
-        paiements (
-          montant,
-          date_paiement
-        )
-      `)
-      .order('num_fiche', { ascending: true });
+    const chargerDonnees = async () => {
+  setLoading(true);
+  let toutesLesDonnees: any[] = [];
+  let errorOccured = false;
+  let hasMore = true;
+  let page = 0;
+  const taillePaquet = 1000; // La limite autorisée par Supabase
 
-    if (error) {
-      alert("Erreur de chargement: " + error.message);
-      setLoading(false);
-      return;
+  try {
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('souscripteurs')
+        .select(`
+          *,
+          paiements (
+            montant,
+            date_paiement
+          )
+        `)
+        .order('num_fiche', { ascending: true })
+        .range(page * taillePaquet, (page + 1) * taillePaquet - 1); // Ex: 0-999, puis 1000-1999
+
+      if (error) {
+        throw error;
+      }
+
+      if (data && data.length > 0) {
+        toutesLesDonnees = [...toutesLesDonnees, ...data];
+        // Si on a reçu moins que la taille demandée, c'est qu'on a fini
+        if (data.length < taillePaquet) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      } else {
+        hasMore = false;
+      }
     }
 
-    if (data) {
-      const bilanComplet = data.map((s: any) => {
-        const sesPaiements = s.paiements || [];
-        
-        const totalPaiements = sesPaiements.reduce((acc: number, curr: any) => acc + (Number(curr.montant) || 0), 0);
-        
-        const dateDernier = sesPaiements.length > 0 
-          ? sesPaiements.sort((a: any, b: any) => 
-              new Date(b.date_paiement).getTime() - new Date(a.date_paiement).getTime()
-            )[0].date_paiement 
-          : null;
-
-        return {
-          ...s,
-          total_verse: totalPaiements + (Number(s.acompte_initial) || 0),
-          dernier_paiement: dateDernier, 
-          derniere_date_paiement: dateDernier ? new Date(dateDernier).toLocaleDateString('fr-FR') : 'Aucun'
-        };
-      });
+    // Traitement du bilan (ton code de calcul habituel)
+    const bilanComplet = toutesLesDonnees.map((s: any) => {
+      const sesPaiements = s.paiements || [];
+      const totalPaiements = sesPaiements.reduce((acc: number, curr: any) => acc + (Number(curr.montant) || 0), 0);
       
-      setListe(bilanComplet);
-    }
+      const dateDernier = sesPaiements.length > 0 
+        ? [...sesPaiements].sort((a: any, b: any) => 
+            new Date(b.date_paiement).getTime() - new Date(a.date_paiement).getTime()
+          )[0].date_paiement 
+        : null;
+
+      return {
+        ...s,
+        total_verse: totalPaiements + (Number(s.acompte_initial) || 0),
+        dernier_paiement: dateDernier, 
+        derniere_date_paiement: dateDernier ? new Date(dateDernier).toLocaleDateString('fr-FR') : 'Aucun'
+      };
+    });
+
+    setListe(bilanComplet);
+
+  } catch (err: any) {
+    alert("Erreur de chargement : " + err.message);
+  } finally {
     setLoading(false);
-  };
+  }
+};
+
     const calculerRetard = (s: BilanSouscripteur) => {
       const moisNoms = ["Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
       const debut = new Date(s.date_souscription);

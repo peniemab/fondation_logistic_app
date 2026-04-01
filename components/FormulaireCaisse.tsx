@@ -30,7 +30,36 @@ export default function FormulaireCaisse({ type }: Props) {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [paiementASupprimer, setPaiementASupprimer] = useState<{id: string, ref: string} | null>(null);
 
+
+  const tenterSuppressionPaiement = (p: any) => {
+  const maintenant = new Date().getTime();
+  const dateCreation = new Date(p.created_at).getTime();
+  const differenceMinutes = (maintenant - dateCreation) / (1000 * 60);
+
+  if (differenceMinutes <= 30) {
+    supprimerDirectement(p.id, p.reference_bordereau);
+  } else {
+    setPaiementASupprimer({ id: p.id, ref: p.reference_bordereau });
+    setShowAdminLogin(true);
+  }
+};
+
+const supprimerDirectement = async (id: string, ref: string) => {
+  if (!confirm(`Supprimer l'erreur sur le bordereau ${ref} ?`)) return;
+  
+  setLoading(true);
+  const { error } = await supabase.from('paiements').delete().eq('id', id);
+  
+  if (!error) {
+    alert("Paiement supprimé.");
+    executerRecherche(); 
+  } else {
+    alert("Erreur : " + error.message);
+  }
+  setLoading(false);
+};
 
   const [fiche, setFiche] = useState({
     id: null,
@@ -217,37 +246,56 @@ const handleSave = async () => {
 };
 
   const handleAdminDelete = async () => {
-      setLoading(true);
-      
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: adminEmail,
-        password: adminPassword,
-      });
-  
-      const EMAIL_AUTORISE = "coordon@fes.com"; 
-  
-      if (authError || data.user?.email !== EMAIL_AUTORISE) {
-        alert("ACCÈS REFUSÉ : Seul le coordon peut autoriser une suppression.");
-        setLoading(false);
-        return;
+  setLoading(true);
+
+  const { data, error: authError } = await supabase.auth.signInWithPassword({
+    email: adminEmail,
+    password: adminPassword,
+  });
+
+  const EMAIL_AUTORISE = "coordon@fes.com";
+
+  if (authError || data.user?.email !== EMAIL_AUTORISE) {
+    alert("ACCÈS REFUSÉ : Seul le coordon peut autoriser cette action.");
+    setLoading(false);
+    return;
+  }
+
+  try {
+    if (paiementASupprimer) {
+      const { error } = await supabase
+        .from('paiements')
+        .delete()
+        .eq('id', paiementASupprimer.id);
+
+      if (!error) {
+        alert(`Paiement ${paiementASupprimer.ref} supprimé par le coordon.`);
+        setPaiementASupprimer(null);
+        await executerRecherche(); 
+      } else {
+        throw error;
       }
-  
-      if (confirm("suppression définitive du dossier?")) {
+    } else {
+      if (confirm("ATTENTION : Suppression DÉFINITIVE du dossier complet et de tous ses paiements ?")) {
         await supabase.from('paiements').delete().eq('num_fiche', fiche.num_fiche);
         const { error } = await supabase.from('souscripteurs').delete().eq('id', fiche.id);
         
         if (!error) {
-          alert("Dossier supprimé avec succès par le coordonnateur.");
+          alert("Dossier supprimé avec succès.");
           window.location.reload();
         } else {
-          alert("Erreur de suppression.");
+          throw error;
         }
       }
-  
-      setLoading(false);
-      setShowAdminLogin(false);
-      setAdminPassword(''); 
-    };
+    }
+  } catch (err: any) {
+    alert("Erreur de suppression : " + err.message);
+  } finally {
+    setLoading(false);
+    setShowAdminLogin(false);
+    setAdminPassword('');
+  }
+};
 
 
 
@@ -488,23 +536,32 @@ const handleSave = async () => {
          <section className="mt-25 overflow-x-auto">
            <h2 className="text-blue-900 font-black text-xs uppercase mb-4">VI. Historique des Versements</h2>
            <table className="w-full border-collapse border border-slate-200 text-[10px]">
-             <thead className="bg-slate-900 text-white print:bg-slate-100 print:text-black">
-               <tr>
-                 <th className="p-1 border">Date</th>
-                 <th className="p-1 border">Référence</th>
-                 <th className="p-1 border text-right">Montant</th>
-               </tr>
-             </thead>
-             <tbody>
-               {paiements.map((p, i) => (
-                 <tr key={i} className="text-center italic">
-                   <td className="p-1 border">{new Date(p.created_at).toLocaleDateString()}</td>
-                   <td className="p-1 border font-bold uppercase">{p.reference_bordereau}</td>
-                   <td className="p-1 border text-right font-black">{p.montant}$</td>
-                 </tr>
-               ))}
-             </tbody>
-           </table>
+  <thead className="bg-slate-900 text-white print:bg-slate-100 print:text-black">
+    <tr>
+      <th className="p-1 border">Date</th>
+      <th className="p-1 border">Référence</th>
+      <th className="p-1 border text-right">Montant</th>
+      <th className="p-1 border text-center print:hidden">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {paiements.map((p: any, i) => (
+      <tr key={i} className="text-center italic hover:bg-slate-50 transition-colors">
+        <td className="p-1 border">{new Date(p.created_at).toLocaleDateString()}</td>
+        <td className="p-1 border font-bold uppercase">{p.reference_bordereau}</td>
+        <td className="p-1 border text-right font-black">{p.montant}$</td>
+        <td className="p-1 border text-center print:hidden">
+          <button 
+  onClick={() => tenterSuppressionPaiement(p)}
+  className="text-red-500 hover:text-red-700 font-bold px-2"
+>
+            SUPP
+          </button>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
          </section>
  
          <div className="hidden print:block mt-8 md:mt-12 pt-4 border-t border-slate-100 text-center">
