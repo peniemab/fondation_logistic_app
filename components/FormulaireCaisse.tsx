@@ -32,7 +32,18 @@ export default function FormulaireCaisse({ type }: Props) {
   const [adminPassword, setAdminPassword] = useState('');
   const [paiementASupprimer, setPaiementASupprimer] = useState<{id: string, ref: string} | null>(null);
 
-
+  const tracerAction = async (nomAction: string, description: string, numFiche: string) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (user) {
+    await supabase.from('logs_activite').insert({
+      utilisateur: user.email, 
+      action: nomAction,
+      details: description,
+      num_fiche: numFiche
+    });
+  }
+};
   const tenterSuppressionPaiement = (p: any) => {
   const maintenant = new Date().getTime();
   const dateCreation = new Date(p.created_at).getTime();
@@ -307,7 +318,7 @@ const handleSave = async () => {
     <div className={`
       absolute top-7 -right-8 w-40 py-1.5 
       rotate-45 text-center shadow-lg
-      text-[10px] font-black uppercase tracking-widest
+      text-xs font-black uppercase tracking-widest
       ${type === 'MILITAIRE' 
         ? 'bg-red-700 text-white border-y-2 border-red-900' 
         : 'bg-slate-800 text-white border-y-2 border-slate-600'}
@@ -342,8 +353,8 @@ const handleSave = async () => {
              </div>
              <div className="space-y-1">
                <h1 className="text-lg md:text-2xl font-black text-green-900 leading-none uppercase">Fondation El-Shaddaï / MBA</h1>
-               <p className="text-[9px] md:text-[10px] font-bold tracking-[0.15em] text-slate-500 uppercase italic">Opération Logements Sociaux - FES / MUTRAV</p>
-               <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase leading-tight max-w-md">ARRETE MINISTERIEL N° 103/CAB.MIN/AFF.SS.AH/PKY/KS/2017</p>
+               <p className="text-xs md:text-xs font-bold tracking-[0.15em] text-slate-500 uppercase italic">Opération Logements Sociaux - FES / MUTRAV</p>
+               <p className="text-xs md:text-xs font-bold text-slate-400 uppercase leading-tight max-w-md">ARRETE MINISTERIEL N° 103/CAB.MIN/AFF.SS.AH/PKY/KS/2017</p>
              </div>
            </div>
  
@@ -471,15 +482,15 @@ const handleSave = async () => {
                {fiche.site && (
                  <div className="flex justify-between items-center bg-blue-50 p-2 border border-blue-100 rounded-lg print:border-slate-900 print:border-2">
                    <div className="flex flex-col">
-                     <span className="text-[8px] uppercase font-black text-blue-400">Total</span>
+                     <span className="text-xs uppercase font-black text-blue-400">Total</span>
                      <span className="font-bold text-xs">{modalites.total}$</span>
                    </div>
                    <div className="flex flex-col border-x px-4 border-blue-200">
-                     <span className="text-[8px] uppercase font-black text-blue-400">Acompte</span>
+                     <span className="text-xs uppercase font-black text-blue-400">Acompte</span>
                      <span className="font-bold text-xs">{modalites.acompte}$</span>
                    </div>
                    <div className="flex flex-col">
-                     <span className="text-[8px] uppercase font-black text-blue-400">Mensuel</span>
+                     <span className="text-xs uppercase font-black text-blue-400">Mensuel</span>
                      <span className="font-bold text-xs">{modalites.mensualite}$</span>
                    </div>
                  </div>
@@ -493,15 +504,15 @@ const handleSave = async () => {
              <section>
                <h2 className="text-blue-900 font-black text-xs uppercase mb-3">V. Résumé du Compte</h2>
                <div className="grid grid-cols-2 md:grid-cols-4 border-2 border-slate-900 divide-x-2 md:divide-x-2 divide-y-2 md:divide-y-0 divide-slate-900 text-center">
-                 <div className="p-1"><span className="text-[8px] block text-slate-500 uppercase">Prix</span><span className="font-black text-sm">{modalites.total}$</span></div>
-                 <div className="p-1"><span className="text-[8px] block text-slate-500 uppercase">Acompte</span><span className="font-black text-sm">{modalites.acompte}$</span></div>
-                 <div className="p-1 bg-green-50"><span className="text-[8px] block text-green-600 uppercase">Versé</span><span className="font-black text-sm text-green-700">{totalVerse.toFixed(2)}$</span></div>
-                 <div className="p-1 bg-red-50"><span className="text-[8px] block text-red-600 uppercase">Reste</span><span className="font-black text-sm text-red-700">{resteAPayer.toFixed(2)}$</span></div>
+                 <div className="p-1"><span className="text-xs block text-slate-500 uppercase">Prix</span><span className="font-black text-sm">{modalites.total}$</span></div>
+                 <div className="p-1"><span className="text-xs block text-slate-500 uppercase">Acompte</span><span className="font-black text-sm">{modalites.acompte}$</span></div>
+                 <div className="p-1 bg-green-50"><span className="text-xs block text-green-600 uppercase">Versé</span><span className="font-black text-sm text-green-700">{totalVerse.toFixed(2)}$</span></div>
+                 <div className="p-1 bg-red-50"><span className="text-xs block text-red-600 uppercase">Reste</span><span className="font-black text-sm text-red-700">{resteAPayer.toFixed(2)}$</span></div>
                </div>
              </section>
  
              <section className="bg-slate-900 p-2 rounded-lg text-white print:hidden">
-   <h3 className="text-yellow-500 font-black text-[10px] uppercase mb-3 italic">Saisie Nouveau Paiement</h3>
+   <h3 className="text-yellow-500 font-black text-xs uppercase mb-3 italic">Saisie Nouveau Paiement</h3>
    <div className="flex flex-col md:flex-row gap-2">
      <input 
        type="date" 
@@ -519,23 +530,23 @@ const handleSave = async () => {
  
          <div className="mt-20 flex flex-col sm:flex-row justify-between gap-10 text-center border-t border-slate-100 pt-10">
            <div className="flex-1">
-             <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Souscripteur</p>
+             <p className="text-xs font-black uppercase text-slate-400 mb-1">Souscripteur</p>
              <div className="border-b border-slate-900 pb-1 mb-2">
-               <span className="text-[10px] font-bold uppercase">{fiche.noms || "Nom du souscripteur"}</span>
+               <span className="text-xs font-bold uppercase">{fiche.noms || "Nom du souscripteur"}</span>
              </div>
-             <div className="h-20 border border-dashed border-green-900 rounded flex items-center justify-center italic text-[8px] text-slate-300">"Lu et approuvé"</div>
+             <div className="h-20 border border-dashed border-green-900 rounded flex items-center justify-center italic text-xs text-slate-300">"Lu et approuvé"</div>
            </div>
  
            <div className="flex-1">
-             <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Pour la Fondation FES / MBA</p>
-             <div className="border-b border-slate-900 pb-1 mb-2 italic text-[10px] font-bold">Sceau et Signature</div>
-             <div className="h-20 flex items-center justify-center text-[8px] text-slate-300">Emplacement du Cachet</div>
+             <p className="text-xs font-black uppercase text-slate-400 mb-1">Pour la Fondation FES / MBA</p>
+             <div className="border-b border-slate-900 pb-1 mb-2 italic text-xs font-bold">Sceau et Signature</div>
+             <div className="h-20 flex items-center justify-center text-xs text-slate-300">Emplacement du Cachet</div>
            </div>
          </div>
  
          <section className="mt-25 overflow-x-auto">
            <h2 className="text-blue-900 font-black text-xs uppercase mb-4">VI. Historique des Versements</h2>
-           <table className="w-full border-collapse border border-slate-200 text-[10px]">
+           <table className="w-full border-collapse border border-slate-200 text-xs">
   <thead className="bg-slate-900 text-white print:bg-slate-100 print:text-black">
     <tr>
       <th className="p-1 border">Date</th>
@@ -566,10 +577,10 @@ const handleSave = async () => {
  
          <div className="hidden print:block mt-8 md:mt-12 pt-4 border-t border-slate-100 text-center">
            <div className="flex flex-col items-center gap-1">
-             <p className="text-[7px] md:text-[8px] text-slate-400 uppercase tracking-[0.2em] md:tracking-[0.3em] leading-relaxed">
+             <p className="text-xs md:text-xs text-slate-400 uppercase tracking-[0.2em] md:tracking-[0.3em] leading-relaxed">
                Document généré par le Système de Gestion FES / MBA 
              </p>
-             <p className="text-[7px] md:text-[8px] text-slate-500 font-bold uppercase">
+             <p className="text-xs md:text-xs text-slate-500 font-bold uppercase">
                Kinshasa-RDC, le {new Date().toLocaleDateString('fr-FR')} à {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
              </p>
            </div>
@@ -582,7 +593,7 @@ const handleSave = async () => {
            {fiche.id && (
              <button 
                onClick={() => setShowAdminLogin(true)} 
-               className="w-full md:w-24 bg-red-100 text-red-600 p-4 font-black uppercase text-[10px] border border-red-200 hover:bg-red-600 hover:text-white transition-all"
+               className="w-full md:w-24 bg-red-100 text-red-600 p-4 font-black uppercase text-xs border border-red-200 hover:bg-red-600 hover:text-white transition-all"
              >
                Supprimer
              </button>
@@ -599,7 +610,7 @@ const handleSave = async () => {
          <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50 backdrop-blur-md">
            <div className="bg-white p-8 rounded-xl max-w-sm w-full shadow-2xl border-t-8 border-red-600">
              <h3 className="text-red-600 font-black text-lg mb-2 uppercase text-center tracking-tighter">Autorisation Requise</h3>
-             <p className="text-[10px] text-slate-500 mb-6 text-center font-bold uppercase">Identifiants administrateur</p>
+             <p className="text-xs text-slate-500 mb-6 text-center font-bold uppercase">Identifiants administrateur</p>
              
              <div className="space-y-3">
                <input 

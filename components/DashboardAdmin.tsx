@@ -1,8 +1,9 @@
   'use client'
 
-  import React, { useState, useEffect } from 'react'
+  import React, { useState, useEffect, useMemo } from 'react'
   import { supabase } from '@/lib/supabase'
 import autoTable from 'jspdf-autotable';
+import { TARIFS_OFFICIELS } from '@/lib/tarifs';
 
   interface BilanSouscripteur {
     id: string;
@@ -21,6 +22,7 @@ import autoTable from 'jspdf-autotable';
     total_verse: number;
     derniere_date_paiement?: string;
     dernier_paiement?: string | null; 
+    paiements?: { montant: number; date_paiement: string }[];
   }
 
   export default function DashboardAdmin() {
@@ -39,6 +41,8 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
       total_verse: true, dette: true, retard: true, mois_impayes: true
     });
     
+
+const [filtreSite, setFiltreSite] = useState<string>('TOUS');
     const [liste, setListe] = useState<BilanSouscripteur[]>([]);
     const [filtreMois, setFiltreMois] = useState<number | null>(null);
     const [filtreCategorie, setFiltreCategorie] = useState<'TOUS' | 'MILITAIRE' | 'CIVIL'>('TOUS');
@@ -69,7 +73,7 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
   let errorOccured = false;
   let hasMore = true;
   let page = 0;
-  const taillePaquet = 1000; // La limite autorisée par Supabase
+  const taillePaquet = 1000; 
 
   try {
     while (hasMore) {
@@ -83,7 +87,7 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
           )
         `)
         .order('num_fiche', { ascending: true })
-        .range(page * taillePaquet, (page + 1) * taillePaquet - 1); // Ex: 0-999, puis 1000-1999
+        .range(page * taillePaquet, (page + 1) * taillePaquet - 1); 
 
       if (error) {
         throw error;
@@ -91,7 +95,6 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
 
       if (data && data.length > 0) {
         toutesLesDonnees = [...toutesLesDonnees, ...data];
-        // Si on a reçu moins que la taille demandée, c'est qu'on a fini
         if (data.length < taillePaquet) {
           hasMore = false;
         } else {
@@ -102,7 +105,6 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
       }
     }
 
-    // Traitement du bilan (ton code de calcul habituel)
     const bilanComplet = toutesLesDonnees.map((s: any) => {
       const sesPaiements = s.paiements || [];
       const totalPaiements = sesPaiements.reduce((acc: number, curr: any) => acc + (Number(curr.montant) || 0), 0);
@@ -168,6 +170,7 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
     const listeFiltrée = liste.filter(s => {
       const { moisDeRetard } = calculerRetard(s);
 
+      const matchSite = filtreSite === 'TOUS' ? true : s.site === filtreSite;
       const matchRecherche = rechercheSuggestive === '' ? true : 
     s.noms.toLowerCase().includes(rechercheSuggestive.toLowerCase()) || 
     s.num_fiche.toString().includes(rechercheSuggestive);
@@ -181,9 +184,42 @@ const [suggestions, setSuggestions] = useState<BilanSouscripteur[]>([]);
       const dDeb = dateDebut ? new Date(dateDebut).getTime() : null;
       const dFin = dateFin ? new Date(dateFin).getTime() : null;
       const matchDate = (!dDeb || sDate >= dDeb) && (!dFin || sDate <= dFin);
-      return matchRecherche && matchCat && matchMois && matchDate && matchDim;
-    });
+return matchRecherche && matchCat && matchMois && matchDate && matchDim && matchSite;    });
 
+
+const financeStats = useMemo(() => {
+  return listeFiltrée.reduce((acc, s) => {
+    const totalContrat = Number(s.prix_total) || 0;
+    const dejaPaye = Number(s.total_verse) || 0;
+
+    return {
+      valeurProjet: acc.valeurProjet + totalContrat,
+      encaissementGlobal: acc.encaissementGlobal + dejaPaye,
+      detteBrute: acc.detteBrute + (totalContrat - dejaPaye),
+      nombreDossiers: acc.nombreDossiers + 1
+    };
+  }, { valeurProjet: 0, encaissementGlobal: 0, detteBrute: 0, nombreDossiers: 0 });
+}, [listeFiltrée]);
+
+const fluxMensuel = useMemo(() => {
+  const moisNoms = ["Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
+  const stats = moisNoms.map(nom => ({ nom, total: 0 }));
+
+  listeFiltrée.forEach(s => {
+    const dateS = new Date(s.date_souscription);
+    if (dateS.getFullYear() === 2026) { 
+      stats[dateS.getMonth()].total += Number(s.acompte_initial) || 0;
+    }
+
+    (s.paiements || []).forEach((p: any) => {
+      const dateP = new Date(p.date_paiement);
+      if (dateP.getFullYear() === 2026) {
+        stats[dateP.getMonth()].total += Number(p.montant) || 0;
+      }
+    });
+  });
+  return stats;
+}, [listeFiltrée]);
     const totalPages = Math.ceil(listeFiltrée.length / parPage);
     const debutIndex = (pageActuelle - 1) * parPage;
     const finIndex = debutIndex + parPage;
@@ -310,7 +346,7 @@ autoTable(doc, {
       return (
         <div className="min-h-[80vh] flex items-center justify-center p-4">
           <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-blue-900">
-            <h2 className="text-2xl font-black text-blue-900 mb-6 uppercase text-center">Admin SYGMA</h2>
+            <h2 className="text-2xl font-black text-blue-900 mb-6 uppercase text-center">Admin</h2>
             <input type="email" placeholder="Email" className="w-full p-4 bg-slate-100 rounded-xl mb-3 outline-none" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
             <input type="password" placeholder="Pass" className="w-full p-4 bg-slate-100 rounded-xl mb-6 outline-none" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
             <button onClick={handleAdminLogin} disabled={loading} className="w-full bg-blue-900 text-white p-4 rounded-xl font-black uppercase">
@@ -328,13 +364,64 @@ autoTable(doc, {
         <h1 className="text-3xl font-black text-slate-800 uppercase italic leading-none">Gestion / Recouvrement</h1>
       
       </div>
-      <div className="max-w-[1250px] mx-auto px-4 mb-6">
+      
+
+<div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
+  <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
+    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Portefeuille Global</p>
+    <h3 className="text-2xl font-black">{financeStats.valeurProjet.toLocaleString()}$</h3>
+    <p className="text-xs text-slate-500 mt-2 italic">Valeur totale des parcelles souscrites</p>
+  </div>
+
+  <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+    <p className="text-xs font-black text-blue-500 uppercase tracking-widest mb-1">TOTAL PERCU</p>
+    <h3 className="text-2xl font-black text-slate-900">{financeStats.encaissementGlobal.toLocaleString()}$</h3>
+    <div className="flex items-center gap-2 mt-2">
+       <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+         <div className="h-full bg-blue-600" style={{ width: `${(financeStats.encaissementGlobal / financeStats.valeurProjet) * 100}%` }}></div>
+       </div>
+       <span className="text-xs font-black text-blue-600">{((financeStats.encaissementGlobal / financeStats.valeurProjet) * 100).toFixed(1)}%</span>
+    </div>
+  </div>
+
+  <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+    <p className="text-xs font-black text-red-500 uppercase tracking-widest mb-1">Créances à Recouvrer</p>
+    <h3 className="text-2xl font-black text-red-600">{financeStats.detteBrute.toLocaleString()}$</h3>
+    <p className="text-xs text-slate-400 mt-2 font-black">Somme des restes à payer</p>
+  </div>
+  
+</div>
+
+<div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 mb-10 shadow-sm">
+  <div className="flex justify-between items-center ">
+    <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Analyse de Trésorerie Mensuelle </h4>
+  </div>
+  
+  <div className="flex items-end justify-between gap-3 h-25">
+    {fluxMensuel.map((m, i) => (
+      <div key={i} className="flex-1 flex flex-col items-center group relative">
+        <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all bg-slate-900 text-white text-xs px-2 py-1 rounded-lg z-10">
+          {m.total}$
+        </div>
+        
+        <div className="w-full bg-slate-50 rounded-t-xl relative flex items-end h-15 overflow-hidden border border-transparent group-hover:border-blue-100 transition-all">
+          <div 
+            className="w-full bg-gradient-to-t from-blue-700 to-blue-500 transition-all duration-1000 ease-out" 
+            style={{ height: `${(m.total / (Math.max(...fluxMensuel.map(x => x.total)) || 1)) * 100}%` }}
+          ></div>
+        </div>
+        <p className="text-xs font-black text-slate-400 mt-3 uppercase">{m.nom}</p>
+      </div>
+    ))}
+  </div>
+</div>
+<div className="max-w-[1250px] mx-auto px-4 mb-6">
   <div className="relative group">
     
     <input
       type="text"
       placeholder="Rechercher un nom "
-      className="w-full pl-14 pr-6 py-5 bg-white border-none rounded-[2rem] shadow-xl text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-900/10 transition-all placeholder:text-slate-300 uppercase italic"
+      className="w-full pl-14 pr-6 py-5 bg-white border-none rounded-[2rem] shadow-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-900/10 transition-all placeholder:text-slate-300 uppercase italic"
       value={rechercheSuggestive}
       onChange={(e) => {
         setRechercheSuggestive(e.target.value);
@@ -346,23 +433,24 @@ autoTable(doc, {
         onClick={() => setRechercheSuggestive('')}
         className="absolute inset-y-0 right-0 pr-6 flex items-center text-slate-300 hover:text-red-500"
       >
-        <span className="text-[10px] font-black uppercase tracking-tighter">Effacer</span>
+        <span className="text-xs font-black uppercase tracking-tighter">Effacer</span>
       </button>
     )}
   </div>
 </div>
+
 
       <div className="max-w-[1250px] mx-auto p-4 animate-in fade-in duration-700">
         <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-slate-100 mb-20">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-900 text-white">
-                <th className="p-5 text-[10px] font-black uppercase tracking-widest">SOUSCRIPTEUR</th>
-                <th className="p-5 text-[10px] font-black uppercase text-center border-x border-slate-800/10">Dernier Versement</th>
-                <th className="p-5 text-[10px] font-black uppercase text-center">COUVERTURE</th>
-                <th className="p-5 text-[10px] font-black uppercase text-right">TOTAL VERSÉ</th>
-                <th className="p-5 text-[10px] font-black uppercase text-right">DETTE MENSUELLE</th>
-                <th className="p-5 text-[10px] font-black uppercase text-center">ÉTAT</th>
+                <th className="p-5 text-xs font-black uppercase tracking-widest">SOUSCRIPTEUR</th>
+                <th className="p-5 text-xs font-black uppercase text-center border-x border-slate-800/10">Dernier Versement</th>
+                <th className="p-5 text-xs font-black uppercase text-center">COUVERTURE</th>
+                <th className="p-5 text-xs font-black uppercase text-right">TOTAL VERSÉ</th>
+                <th className="p-5 text-xs font-black uppercase text-right">DETTE MENSUELLE</th>
+                <th className="p-5 text-xs font-black uppercase text-center">ÉTAT</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -372,17 +460,17 @@ autoTable(doc, {
       <tr key={s.id} className="hover:bg-slate-50 transition-all border-b border-slate-50">
         <td className="p-4">
           <div className="flex items-start gap-3">
-            <span className="text-[10px] font-black text-slate-300 mt-1">#{debutIndex + index + 1}</span>
+            <span className="text-xs font-black text-slate-300 mt-1">#{debutIndex + index + 1}</span>
             <div>
-              <div className="font-black text-slate-800 uppercase text-sm leading-tight">{s.noms}</div>
-              <div className="text-[10px] font-bold text-blue-600 uppercase mt-1">
+              <div className="font-black text-slate-800 uppercase text-xs leading-tight">{s.noms}</div>
+              <div className="text-xs font-bold text-blue-600 uppercase mt-1">
                 Fiche {s.num_fiche} — {s.telephone} { s.telephone_2 && ` / ${s.telephone_2}` }
               </div>
               <div className="flex gap-2 mt-1">
-                <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[9px] font-black uppercase">
+                <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-black uppercase">
                   {s.nombre_parcelles || 1} Parc.
                 </span>
-                <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[9px] font-black uppercase">
+                <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-black uppercase">
                   Dim: {s.dimension || 'N/A'}
                 </span>
               </div>
@@ -392,10 +480,10 @@ autoTable(doc, {
         <td className="p-4 text-center border-x border-slate-50">
     {s.dernier_paiement ? (
       <div className="flex flex-col items-center">
-        <div className="text-[11px] font-black text-slate-700 uppercase">
+        <div className="text-xs font-black text-slate-700 uppercase">
           {new Date(s.dernier_paiement).toLocaleDateString('fr-FR')}
         </div>
-        <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full mt-1 ${
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full mt-1 ${
           (new Date().getTime() - new Date(s.dernier_paiement).getTime()) / (1000 * 3600 * 24) > 30 
           ? 'bg-red-50 text-red-500' 
           : 'bg-green-50 text-green-600'
@@ -406,22 +494,22 @@ autoTable(doc, {
         </span>
       </div>
     ) : (
-      <span className="text-[9px] font-black text-slate-300 uppercase italic">Aucun historique</span>
+      <span className="text-xs font-black text-slate-300 uppercase italic">Aucun historique</span>
     )}
   </td>
         <td className="p-4 text-center">
-          <div className="text-[9px] font-black text-slate-400 uppercase">Couvert jusqu'au</div>
+          <div className="text-xs font-black text-slate-400 uppercase">Couvert jusqu'au</div>
           <div className={`text-xs font-black ${moisDeRetard > 0 ? 'text-red-600' : 'text-green-600'}`}>
             {couvertJusquau}
           </div>
-          <div className="text-[8px] text-slate-400 font-medium italic">Souscrit le {new Date(s.date_souscription).toLocaleDateString()}</div>
+          <div className="text-xs text-slate-400 font-medium italic">Souscrit le {new Date(s.date_souscription).toLocaleDateString()}</div>
         </td>
         <td className="p-4 text-right">
     <div className="flex flex-col items-end">
-      <div className="text-[11px] font-black text-slate-700">
+      <div className="text-xs font-black text-slate-700">
         {s.total_verse.toFixed(2)}$ <span className="text-slate-300 mx-0.5">/</span> {s.prix_total.toFixed(2)}$
       </div>
-      <div className="text-[9px] text-blue-600 font-bold uppercase tracking-tighter">
+      <div className="text-xs text-blue-600 font-bold uppercase tracking-tighter">
         {((s.total_verse / s.prix_total) * 100).toFixed(0)}% du contrat
       </div>
       <div className="w-24 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
@@ -433,17 +521,17 @@ autoTable(doc, {
     </div>
   </td>
         <td className="p-4 text-right">
-          <div className="text-sm font-black text-red-600">-{detteArgent.toFixed(2)} $</div>
-          <div className="text-[9px] text-red-400 font-bold uppercase italic">à payer</div>
+          <div className="text-xs font-black text-red-600">-{detteArgent.toFixed(2)} $</div>
+          <div className="text-xs text-red-400 font-bold uppercase italic">à payer</div>
         </td>
         <td className="p-4 text-center">
-          <div className={`inline-block px-3 py-1 rounded-full text-[9px] font-black ${
+          <div className={`inline-block px-3 py-1 rounded-full text-xs font-black ${
             moisDeRetard === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
           }`}>
             {moisDeRetard === 0 ? 'À JOUR' : `${moisDeRetard} MOIS DUS`}
           </div>
           {moisDeRetard > 0 && (
-            <div className="text-[8px] font-black text-red-400 mt-1 uppercase tracking-tighter">
+            <div className="text-xs font-black text-red-400 mt-1 uppercase tracking-tighter">
               {moisEnRetardTexte}
             </div>
           )}
@@ -463,64 +551,112 @@ autoTable(doc, {
             
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-xl">
-                <span className="text-[9px] font-black text-slate-500 uppercase px-2">Période</span>
-                <input type="date" className="bg-transparent text-[10px] font-bold outline-none" value={dateDebut} onChange={(e) => {setDateDebut(e.target.value); setPageActuelle(1)}} />
-                <span className="text-slate-400 text-[9px]">au</span>
-                <input type="date" className="bg-transparent text-[10px] font-bold outline-none" value={dateFin} onChange={(e) => {setDateFin(e.target.value); setPageActuelle(1)}} />
+                <span className="text-xs font-black text-slate-500 uppercase px-2">Période</span>
+                <input type="date" className="bg-transparent text-xs font-bold outline-none" value={dateDebut} onChange={(e) => {setDateDebut(e.target.value); setPageActuelle(1)}} />
+                <span className="text-slate-400 text-xs">au</span>
+                <input type="date" className="bg-transparent text-xs font-bold outline-none" value={dateFin} onChange={(e) => {setDateFin(e.target.value); setPageActuelle(1)}} />
               </div>
-
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-                {['TOUS', 'MILITAIRE', 'CIVIL'].map((c) => (
-                  <button key={c} onClick={() => {setFiltreCategorie(c as any); setPageActuelle(1)}} className={`px-4 py-1.5 rounded-lg text-[9px] font-black transition-all ${filtreCategorie === c ? 'bg-blue-900 text-white shadow-md' : 'text-slate-400'}`}>{c}</button>
-                ))}
-              </div>
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-    {['TOUS', '15x20', '20x20'].map((d) => (
-      <button 
-        key={d} 
-        onClick={() => {setFiltreDimension(d as any); setPageActuelle(1)}} 
-        className={`px-4 py-1.5 rounded-lg text-[9px] font-black transition-all ${filtreDimension === d ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}
-      >
-        {d}
-      </button>
-    ))}
+{/* Select Catégorie */}
+<div className="w-28">
+  <div className="relative group">
+    <select 
+      value={filtreCategorie} 
+      onChange={(e) => setFiltreCategorie(e.target.value as any)}
+      className="w-full p-4 pr-10 bg-white border border-slate-100 rounded-2xl outline-none font-black text-slate-700 text-xs uppercase cursor-pointer appearance-none focus:ring-4 ring-blue-900/5 shadow-sm transition-all hover:border-blue-200"
+    >
+      <option value="TOUS">catégorie</option>
+      <option value="MILITAIRE">Militaire</option>
+      <option value="CIVIL">Civil</option>
+    </select>
+    
+    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity">
+      <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
   </div>
+</div>
+              
+        {/* Select Dimension */}
+<div className="w-28">
+  <div className="relative group">
+    <select 
+      value={filtreDimension} 
+      onChange={(e) => setFiltreDimension(e.target.value as any)}
+      className="w-full p-4 pr-10 bg-white border border-slate-100 rounded-2xl outline-none font-black text-slate-700 text-xs uppercase cursor-pointer appearance-none focus:ring-4 ring-blue-900/5 shadow-sm transition-all hover:border-blue-200"
+    >
+      <option value="TOUS">dimension</option>
+      <option value="15x20">15 x 20</option>
+      <option value="20x20">20 x 20</option>
+    </select>
+    
+    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity">
+      <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
+  </div>
+</div>
+{/* Select Site */}
+<div className="w-18">
+  <div className="relative group">
+    <select 
+  value={filtreSite} 
+  onChange={(e) => {setFiltreSite(e.target.value); setPageActuelle(1)}}
+  className="w-full p-4 pr-10 bg-white border border-slate-100 rounded-2xl outline-none font-black text-slate-700 text-xs uppercase cursor-pointer appearance-none focus:ring-4 ring-blue-900/5 shadow-sm transition-all"
+>
+  <option value="TOUS">site</option>
+  {/* On utilise Object.keys pour boucler sur les sites sans erreur */}
+  {Object.keys(TARIFS_OFFICIELS).map((nomSite) => (
+    <option key={nomSite} value={nomSite}>
+      {nomSite}
+    </option>
+  ))}
+</select>
+    
+    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity">
+      <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
+  </div>
+</div>
 
               <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
-                <button onClick={() => {setFiltreMois(null); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === null ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>TOUS</button>
-                <button onClick={() => {setFiltreMois(1); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === 1 ? 'bg-orange-400 text-white' : 'text-slate-400'}`}>1M</button>
-                <button onClick={() => {setFiltreMois(2); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === 2 ? 'bg-orange-600 text-white' : 'text-slate-400'}`}>2M</button>
-                <button onClick={() => {setFiltreMois(3); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-[9px] font-black ${filtreMois === 3 ? 'bg-red-600 text-white' : 'text-slate-400'}`}>3M+</button>
+                <button onClick={() => {setFiltreMois(null); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-xs font-black ${filtreMois === null ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>TOUS</button>
+                <button onClick={() => {setFiltreMois(1); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-xs font-black ${filtreMois === 1 ? 'bg-orange-400 text-white' : 'text-slate-400'}`}>1M</button>
+                <button onClick={() => {setFiltreMois(2); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-xs font-black ${filtreMois === 2 ? 'bg-orange-600 text-white' : 'text-slate-400'}`}>2M</button>
+                <button onClick={() => {setFiltreMois(3); setPageActuelle(1)}} className={`px-3 py-1.5 rounded-lg text-xs font-black ${filtreMois === 3 ? 'bg-red-600 text-white' : 'text-slate-400'}`}>3M+</button>
               </div>
             </div>
 
-            <button onClick={() => setShowExportModal(true)} className="bg-green-600 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-md hover:bg-green-700 transition-all flex items-center gap-2">
+            <button onClick={() => setShowExportModal(true)} className="bg-green-600 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase shadow-md hover:bg-green-700 transition-all flex items-center gap-2">
               Exporter {listeFiltrée.length} dossiers
             </button>
           </div>
 
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">
-              Affichage <span className="text-blue-600">{debutIndex + 1} - {Math.min(finIndex, listeFiltrée.length)}</span> sur {listeFiltrée.length}
+            <span className="text-xs font-black text-slate-500 uppercase tracking-tighter">
+              FICHIER <span className="text-blue-600">{debutIndex + 1} - {Math.min(finIndex, listeFiltrée.length)}</span> sur {listeFiltrée.length}
             </span>
             
             <div className="flex gap-2">
               <button 
                 disabled={pageActuelle === 1}
                 onClick={() => {setPageActuelle(p => p - 1); window.scrollTo(0,0)}}
-                className="px-4 py-2 bg-slate-100 rounded-lg text-[9px] font-black disabled:opacity-30 uppercase"
+                className="px-4 py-2 bg-slate-100 rounded-lg text-xs font-black disabled:opacity-30 uppercase"
               >
-                Précédent
+                BACK
               </button>
-              <div className="flex items-center px-4 bg-slate-900 text-white rounded-lg text-[10px] font-black">
-                PAGE {pageActuelle} / {totalPages || 1}
+              <div className="flex items-center px-4 bg-slate-900 text-white rounded-lg text-xs font-black">
+                P {pageActuelle} / {totalPages || 1}
               </div>
               <button 
                 disabled={pageActuelle === totalPages || totalPages === 0}
                 onClick={() => {setPageActuelle(p => p + 1); window.scrollTo(0,0)}}
-                className="px-4 py-2 bg-slate-100 rounded-lg text-[9px] font-black disabled:opacity-30 uppercase"
+                className="px-4 py-2 bg-slate-100 rounded-lg text-xs font-black disabled:opacity-30 uppercase"
               >
-                Suivant
+                NEXT
               </button>
             </div>
           </div>
@@ -530,7 +666,7 @@ autoTable(doc, {
   {showExportModal && (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl border border-white">
-        <h3 className="text-xl font-black text-slate-800 uppercase italic mb-6">Personnaliser l'export</h3>
+        <h3 className="text-xl font-black text-slate-800 uppercase italic mb-6">Personnaliser</h3>
         
         <div className="grid grid-cols-2 gap-3 mb-8">
           {Object.keys(colonnesExport).map((key) => (
@@ -541,17 +677,16 @@ autoTable(doc, {
                 onChange={() => setColonnesExport(prev => ({ ...prev, [key]: !(prev as any)[key] }))}
                 className="w-4 h-4 accent-blue-600"
               />
-              <span className="text-[10px] font-black text-slate-600 uppercase italic">{key.replace('_', ' ')}</span>
+              <span className="text-xs font-black text-slate-600 uppercase italic">{key.replace('_', ' ')}</span>
             </label>
           ))}
         </div>
 
         <div className="flex gap-3">
-          <button onClick={() => setShowExportModal(false)} className="flex-1 p-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Annuler</button>
-         {/* Remplace l'ancien bouton par celui-ci */}
+          <button onClick={() => setShowExportModal(false)} className="flex-1 p-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-xs">Annuler</button>
 <button 
   onClick={exportToPDF} 
-  className="flex-1 p-4 bg-blue-900 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-blue-900/20"
+  className="flex-1 p-4 bg-blue-900 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-blue-900/20"
 >
   Télécharger
 </button>
