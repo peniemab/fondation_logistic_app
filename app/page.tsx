@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import FormulaireCaisse from '@/components/FormulaireCaisse'
 import DashboardAdmin from '@/components/DashboardAdmin'
+import DashboardHome from '@/components/DashboardHome'
+import SubscribersView from '@/components/SubscribersView'
 
 const sectionLabels: Record<string, { title: string; subtitle: string }> = {
   hub: {
@@ -105,6 +107,8 @@ export default function LogicielFES() {
     if (activeView === 'militaire') return <FormulaireCaisse type="MILITAIRE" />
     if (activeView === 'civil') return <FormulaireCaisse type="CIVIL" />
     if (activeView === 'admin') return <DashboardAdmin />
+    if (activeView === 'hub') return <DashboardHome />
+    if (activeView === 'subscribers') return <SubscribersView />
 
     const section = sectionLabels[activeView] ?? sectionLabels.hub
     return (

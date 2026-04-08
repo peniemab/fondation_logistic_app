@@ -21,20 +21,20 @@ const menuItems = [
   {
     id: 'militaire',
     title: 'Formulaire militaire',
-    description: 'Inscription des militaires',
-    icon: ShieldCheck,
+    description: 'Souscription des militaires',
+    icon: ClipboardList,
   },
   {
     id: 'civil',
     title: 'Formulaire civil',
-    description: 'Inscription des civils',
-    icon: Users,
-  },
-  {
+    description: 'Souscription des civils',
+    icon: ClipboardList,
+},
+{
     id: 'subscribers',
     title: 'Souscripteurs',
     description: 'Vues des souscripteurs',
-    icon: ClipboardList,
+    icon: Users,
   },
   {
     id: 'echeances',
