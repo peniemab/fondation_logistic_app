@@ -5,6 +5,16 @@ export default function HubAccueil({ setActiveView }: { setActiveView: (v: any) 
         <img src="/FES.jpg" alt="Logo" className="w-24 h-24 mx-auto mb-4 rounded-full shadow-lg" />
         <h1 className="text-4xl font-black text-blue-900 uppercase italic">Fondation El-Shaddaï / MBA__GESTION__</h1>
       </div>
+//menu burger :
+      // -tableau de bord : vue d'ensemble de l'activite
+      // -formulaire militaire : formulaire d'inscription des militaires
+      // -formulaire civil : formulaire d'inscription des civils
+      // -vues des souscripteurs 
+      // -echeances mensuelles
+      // -rapport et syntheses 
+      // -journal d'audits
+      // -retardataires
+      // -verification du qrcode formulaire et recu 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* CARTE MILITAIRES */}
