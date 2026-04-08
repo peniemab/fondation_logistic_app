@@ -103,8 +103,7 @@ const supprimerDirectement = async (id: string, ref: string) => {
        }])
      
        if (error) {
-         alert(error.code === '23505' ? "Bordereau déjà utilisé !" : error.message)
-       } else {
+alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur !" : error.message)       } else {
          alert("Paiement enregistré avec succès");
          setMontantSaisie(''); 
          setRefBordereau('');
