@@ -547,9 +547,9 @@ const handleSave = async () => {
   <tbody>
     {paiements.map((p: any, i) => (
       <tr key={i} className="text-center italic hover:bg-slate-50 transition-colors">
-        <td className="p-1 border">{new Date(p.created_at).toLocaleDateString()}</td>
+        <td className="p-1 border">{new Date(p.date_paiement || p.created_at).toLocaleDateString('fr-FR')}</td>
         <td className="p-1 border font-bold uppercase">{p.reference_bordereau}</td>
-        <td className="p-1 border text-right font-black">{p.montant}$</td>
+        <td className="p-1 border text-center font-black">{p.montant}$</td>
         <td className="p-1 border text-center print:hidden">
           <button 
   onClick={() => tenterSuppressionPaiement(p)}
