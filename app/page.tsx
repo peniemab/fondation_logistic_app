@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation'
 import FormulaireCaisse from '@/components/FormulaireCaisse'
 import DashboardAdmin from '@/components/DashboardAdmin'
 import DashboardHome from '@/components/DashboardHome'
+import RecouvrementView from '@/components/RecouvrementView'
 import SubscribersView from '@/components/SubscribersView'
 
 const sectionLabels: Record<string, { title: string; subtitle: string }> = {
@@ -30,9 +31,9 @@ const sectionLabels: Record<string, { title: string; subtitle: string }> = {
     title: 'Journal d’audits',
     subtitle: 'Historique des contrôles et actions.',
   },
-  retardataires: {
-    title: 'Retardataires',
-    subtitle: 'Suivi des souscripteurs en retard.',
+  recouvrement: {
+    title: 'Recouvrement',
+    subtitle: 'Pilotez les relances et le recouvrement des mensualités.',
   },
   verification: {
     title: 'Vérification QR code',
@@ -41,7 +42,7 @@ const sectionLabels: Record<string, { title: string; subtitle: string }> = {
 }
 
 export default function LogicielFES() {
-  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'echeances' | 'rapports' | 'audits' | 'retardataires' | 'verification'>('hub');
+  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification'>('hub');
   const [sessionActive, setSessionActive] = useState(false);
   const router = useRouter();
   const handleLogout = useCallback(async (reason: string = '') => {
@@ -107,8 +108,15 @@ export default function LogicielFES() {
     if (activeView === 'militaire') return <FormulaireCaisse type="MILITAIRE" />
     if (activeView === 'civil') return <FormulaireCaisse type="CIVIL" />
     if (activeView === 'admin') return <DashboardAdmin />
+    if (activeView === 'recouvrement') return <RecouvrementView />
     if (activeView === 'hub') return <DashboardHome />
-    if (activeView === 'subscribers') return <SubscribersView />
+    if (activeView === 'subscribers') {
+      return (
+        <SubscribersView
+          onAddSubscriber={(view) => setActiveView(view)}
+        />
+      )
+    }
 
     const section = sectionLabels[activeView] ?? sectionLabels.hub
     return (

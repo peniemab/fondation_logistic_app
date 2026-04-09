@@ -4,6 +4,7 @@
   import { supabase } from '@/lib/supabase'
 import autoTable from 'jspdf-autotable';
 import { TARIFS_OFFICIELS } from '@/lib/tarifs';
+import { Eye, Printer, X } from 'lucide-react';
 
   interface BilanSouscripteur {
     id: string;
@@ -25,10 +26,34 @@ import { TARIFS_OFFICIELS } from '@/lib/tarifs';
     paiements?: { montant: number; date_paiement: string }[];
   }
 
+  interface DetailSouscripteur {
+    id: string;
+    num_fiche: string;
+    noms: string;
+    categorie: string;
+    site: string;
+    telephone: string;
+    telephone_2?: string;
+    email?: string;
+    dimension?: string;
+    num_parcelle?: string;
+    num_cadastral?: string;
+    num_acte_vente?: string;
+    date_souscription: string;
+    quotite_mensuelle: number;
+    acompte_initial: number;
+    prix_total: number;
+    paiements: { montant: number; date_paiement: string }[];
+    total_verse: number;
+    dernier_versement_date: string | null;
+    dernier_versement_montant: number | null;
+    couverture: string;
+    retard_mois: number;
+    dette_mensuelle: number;
+    etat: 'À JOUR' | 'EN RETARD';
+  }
+
   export default function DashboardAdmin() {
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [adminEmail, setAdminEmail] = useState('');
-    const [adminPassword, setAdminPassword] = useState('');
     const [loading, setLoading] = useState(false);
 
     const [rechercheSuggestive, setRechercheSuggestive] = useState('');
@@ -50,27 +75,15 @@ const [filtreSite, setFiltreSite] = useState<string>('TOUS');
     const [dateDebut, setDateDebut] = useState('');
     const [dateFin, setDateFin] = useState('');
     const [pageActuelle, setPageActuelle] = useState(1);
+    const [detailOuvert, setDetailOuvert] = useState(false);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState<string | null>(null);
+    const [detailSelectionne, setDetailSelectionne] = useState<DetailSouscripteur | null>(null);
     const parPage = 100;
-
-    const handleAdminLogin = async () => {
-      setLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: adminEmail,
-        password: adminPassword,
-      });
-      if (error || data.user?.email !== "coordon@fes.com") {
-        alert("Accès refusé.");
-      } else {
-        setIsAdmin(true);
-        chargerDonnees();
-      }
-      setLoading(false);
-    };
 
     const chargerDonnees = async () => {
   setLoading(true);
   let toutesLesDonnees: any[] = [];
-  let errorOccured = false;
   let hasMore = true;
   let page = 0;
   const taillePaquet = 1000; 
@@ -131,6 +144,10 @@ const [filtreSite, setFiltreSite] = useState<string>('TOUS');
     setLoading(false);
   }
 };
+
+    useEffect(() => {
+      chargerDonnees();
+    }, []);
 
     const calculerRetard = (s: BilanSouscripteur) => {
       const moisNoms = ["Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
@@ -224,6 +241,181 @@ const fluxMensuel = useMemo(() => {
     const debutIndex = (pageActuelle - 1) * parPage;
     const finIndex = debutIndex + parPage;
     const donneesAffichees = listeFiltrée.slice(debutIndex, finIndex);
+
+    const formatMontant = (value: number) => `${value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}$`;
+
+    const formatDate = (value?: string | null) => {
+      if (!value) return 'Non renseigné';
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString('fr-FR');
+    };
+
+    const fermerDetail = () => {
+      setDetailOuvert(false);
+      setDetailError(null);
+    };
+
+    const ouvrirDetailSouscripteur = async (id: string) => {
+      setDetailOuvert(true);
+      setDetailLoading(true);
+      setDetailError(null);
+
+      try {
+        const { data, error } = await supabase
+          .from('souscripteurs')
+          .select(`
+            id,
+            num_fiche,
+            noms,
+            categorie,
+            site,
+            telephone,
+            telephone_2,
+            email,
+            dimension,
+            num_parcelle,
+            num_cadastral,
+            num_acte_vente,
+            date_souscription,
+            quotite_mensuelle,
+            acompte_initial,
+            prix_total,
+            paiements (
+              montant,
+              date_paiement
+            )
+          `)
+          .eq('id', id)
+          .single();
+
+        if (error || !data) {
+          throw error || new Error('Souscripteur introuvable');
+        }
+
+        const paiements = (data.paiements || []).map((p: any) => ({
+          montant: Number(p.montant) || 0,
+          date_paiement: p.date_paiement,
+        }));
+
+        const paiementsTries = [...paiements].sort(
+          (a, b) => new Date(b.date_paiement).getTime() - new Date(a.date_paiement).getTime()
+        );
+
+        const totalPaiements = paiements.reduce((acc, p) => acc + p.montant, 0);
+        const totalVerse = totalPaiements + (Number(data.acompte_initial) || 0);
+        const dernierPaiement = paiementsTries[0] || null;
+
+        const bilanTemp: BilanSouscripteur = {
+          ...(data as any),
+          total_verse: totalVerse,
+          paiements,
+        };
+
+        const { moisDeRetard, couvertJusquau } = calculerRetard(bilanTemp);
+
+        setDetailSelectionne({
+          id: data.id,
+          num_fiche: String(data.num_fiche || ''),
+          noms: data.noms || '-',
+          categorie: data.categorie || '-',
+          site: data.site || '-',
+          telephone: data.telephone || '-',
+          telephone_2: data.telephone_2 || '',
+          email: data.email || '',
+          dimension: data.dimension || '',
+          num_parcelle: data.num_parcelle || '',
+          num_cadastral: data.num_cadastral || '',
+          num_acte_vente: data.num_acte_vente || '',
+          date_souscription: data.date_souscription,
+          quotite_mensuelle: Number(data.quotite_mensuelle) || 0,
+          acompte_initial: Number(data.acompte_initial) || 0,
+          prix_total: Number(data.prix_total) || 0,
+          paiements,
+          total_verse: totalVerse,
+          dernier_versement_date: dernierPaiement?.date_paiement || null,
+          dernier_versement_montant: dernierPaiement?.montant ?? null,
+          couverture: couvertJusquau,
+          retard_mois: moisDeRetard,
+          dette_mensuelle: Number(data.quotite_mensuelle) || 0,
+          etat: moisDeRetard > 0 ? 'EN RETARD' : 'À JOUR',
+        });
+      } catch (err: any) {
+        setDetailSelectionne(null);
+        setDetailError(err?.message || 'Erreur lors du chargement du détail');
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+
+    const imprimerFicheSouscripteur = () => {
+      if (!detailSelectionne) return;
+
+      const w = window.open('', '_blank', 'width=900,height=700');
+      if (!w) return;
+
+      const html = `
+        <html>
+          <head>
+            <title>Fiche souscripteur - ${detailSelectionne.noms}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
+              h1 { margin: 0 0 6px; font-size: 22px; }
+              h2 { margin: 20px 0 8px; font-size: 14px; text-transform: uppercase; color: #334155; }
+              .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+              .row { font-size: 13px; }
+              .label { font-weight: 700; color: #475569; }
+              .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+              .ok { background: #dcfce7; color: #166534; }
+              .ko { background: #fee2e2; color: #991b1b; }
+            </style>
+          </head>
+          <body>
+            <h1>Fiche souscripteur</h1>
+            <div class="row"><span class="label">Nom:</span> ${detailSelectionne.noms}</div>
+            <div class="row"><span class="label">N° Fiche:</span> ${detailSelectionne.num_fiche}</div>
+
+            <h2>Identité</h2>
+            <div class="grid">
+              <div class="row"><span class="label">Catégorie:</span> ${detailSelectionne.categorie || '-'}</div>
+              <div class="row"><span class="label">Site:</span> ${detailSelectionne.site || '-'}</div>
+            </div>
+
+            <h2>Contacts</h2>
+            <div class="grid">
+              <div class="row"><span class="label">Téléphone 1:</span> ${detailSelectionne.telephone || '-'}</div>
+              <div class="row"><span class="label">Téléphone 2:</span> ${detailSelectionne.telephone_2 || '-'}</div>
+              <div class="row"><span class="label">Email:</span> ${detailSelectionne.email || '-'}</div>
+            </div>
+
+            <h2>Foncier</h2>
+            <div class="grid">
+              <div class="row"><span class="label">Dimension:</span> ${detailSelectionne.dimension || '-'}</div>
+              <div class="row"><span class="label">Parcelle:</span> ${detailSelectionne.num_parcelle || '-'}</div>
+              <div class="row"><span class="label">Cadastral:</span> ${detailSelectionne.num_cadastral || '-'}</div>
+              <div class="row"><span class="label">Acte:</span> ${detailSelectionne.num_acte_vente || '-'}</div>
+            </div>
+
+            <h2>Souscription et recouvrement</h2>
+            <div class="grid">
+              <div class="row"><span class="label">Date souscription:</span> ${formatDate(detailSelectionne.date_souscription)}</div>
+              <div class="row"><span class="label">Dernier versement:</span> ${formatDate(detailSelectionne.dernier_versement_date)}${detailSelectionne.dernier_versement_montant !== null ? ` (${formatMontant(detailSelectionne.dernier_versement_montant)})` : ''}</div>
+              <div class="row"><span class="label">Couverture:</span> ${detailSelectionne.couverture}</div>
+              <div class="row"><span class="label">Total versé:</span> ${formatMontant(detailSelectionne.total_verse)}</div>
+              <div class="row"><span class="label">Dette mensuelle:</span> ${formatMontant(detailSelectionne.dette_mensuelle)}</div>
+              <div class="row"><span class="label">État:</span> <span class="badge ${detailSelectionne.etat === 'À JOUR' ? 'ok' : 'ko'}">${detailSelectionne.etat}${detailSelectionne.retard_mois > 0 ? ` (${detailSelectionne.retard_mois} mois)` : ''}</span></div>
+            </div>
+
+            <script>
+              window.onload = function () { window.print(); };
+            </script>
+          </body>
+        </html>
+      `;
+
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    };
 
     const exportToPDF = async () => {
   const { jsPDF } = await import('jspdf');
@@ -342,21 +534,6 @@ autoTable(doc, {
   setShowExportModal(false);
 };
 
-    if (!isAdmin) {
-      return (
-        <div className="min-h-[80vh] flex items-center justify-center p-4">
-          <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-blue-900">
-            <h2 className="text-2xl font-black text-blue-900 mb-6 uppercase text-center">Admin</h2>
-            <input type="email" placeholder="Email" className="w-full p-4 bg-slate-100 rounded-xl mb-3 outline-none" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
-            <input type="password" placeholder="Pass" className="w-full p-4 bg-slate-100 rounded-xl mb-6 outline-none" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} />
-            <button onClick={handleAdminLogin} disabled={loading} className="w-full bg-blue-900 text-white p-4 rounded-xl font-black uppercase">
-              {loading ? "Chargement..." : "Entrer"}
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     return (
     <div className="min-h-screen bg-slate-50 pb-40"> 
       
@@ -446,16 +623,11 @@ autoTable(doc, {
             <thead>
               <tr className="bg-slate-900 text-white">
                 <th className="p-5 text-xs font-black uppercase tracking-widest">SOUSCRIPTEUR</th>
-                <th className="p-5 text-xs font-black uppercase text-center border-x border-slate-800/10">Dernier Versement</th>
-                <th className="p-5 text-xs font-black uppercase text-center">COUVERTURE</th>
-                <th className="p-5 text-xs font-black uppercase text-right">TOTAL VERSÉ</th>
-                <th className="p-5 text-xs font-black uppercase text-right">DETTE MENSUELLE</th>
-                <th className="p-5 text-xs font-black uppercase text-center">ÉTAT</th>
+                <th className="p-5 text-xs font-black uppercase text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {donneesAffichees.map((s, index) => {
-    const { moisDeRetard, detteArgent, moisEnRetardTexte, couvertJusquau } = calculerRetard(s);
     return (
       <tr key={s.id} className="hover:bg-slate-50 transition-all border-b border-slate-50">
         <td className="p-4">
@@ -464,77 +636,20 @@ autoTable(doc, {
             <div>
               <div className="font-black text-slate-800 uppercase text-xs leading-tight">{s.noms}</div>
               <div className="text-xs font-bold text-blue-600 uppercase mt-1">
-                Fiche {s.num_fiche} — {s.telephone} { s.telephone_2 && ` / ${s.telephone_2}` }
-              </div>
-              <div className="flex gap-2 mt-1">
-                <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-black uppercase">
-                  {s.nombre_parcelles || 1} Parc.
-                </span>
-                <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-black uppercase">
-                  Dim: {s.dimension || 'N/A'}
-                </span>
+                Fiche {s.num_fiche} • {s.telephone || '-'}
               </div>
             </div>
           </div>
         </td>
-        <td className="p-4 text-center border-x border-slate-50">
-    {s.dernier_paiement ? (
-      <div className="flex flex-col items-center">
-        <div className="text-xs font-black text-slate-700 uppercase">
-          {new Date(s.dernier_paiement).toLocaleDateString('fr-FR')}
-        </div>
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full mt-1 ${
-          (new Date().getTime() - new Date(s.dernier_paiement).getTime()) / (1000 * 3600 * 24) > 30 
-          ? 'bg-red-50 text-red-500' 
-          : 'bg-green-50 text-green-600'
-        }`}>
-          {(new Date().getTime() - new Date(s.dernier_paiement).getTime()) / (1000 * 3600 * 24) > 30 
-            ? 'Inactif > 30j' 
-            : 'Actif'}
-        </span>
-      </div>
-    ) : (
-      <span className="text-xs font-black text-slate-300 uppercase italic">Aucun historique</span>
-    )}
-  </td>
-        <td className="p-4 text-center">
-          <div className="text-xs font-black text-slate-400 uppercase">Couvert jusqu'au</div>
-          <div className={`text-xs font-black ${moisDeRetard > 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {couvertJusquau}
-          </div>
-          <div className="text-xs text-slate-400 font-medium italic">Souscrit le {new Date(s.date_souscription).toLocaleDateString()}</div>
-        </td>
         <td className="p-4 text-right">
-    <div className="flex flex-col items-end">
-      <div className="text-xs font-black text-slate-700">
-        {s.total_verse.toFixed(2)}$ <span className="text-slate-300 mx-0.5">/</span> {s.prix_total.toFixed(2)}$
-      </div>
-      <div className="text-xs text-blue-600 font-bold uppercase tracking-tighter">
-        {((s.total_verse / s.prix_total) * 100).toFixed(0)}% du contrat
-      </div>
-      <div className="w-24 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
-        <div 
-          className="h-full bg-green-500 rounded-full" 
-          style={{ width: `${Math.min(100, (s.total_verse / s.prix_total) * 100)}%` }}
-        />
-      </div>
-    </div>
-  </td>
-        <td className="p-4 text-right">
-          <div className="text-xs font-black text-red-600">-{detteArgent.toFixed(2)} $</div>
-          <div className="text-xs text-red-400 font-bold uppercase italic">à payer</div>
-        </td>
-        <td className="p-4 text-center">
-          <div className={`inline-block px-3 py-1 rounded-full text-xs font-black ${
-            moisDeRetard === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-          }`}>
-            {moisDeRetard === 0 ? 'À JOUR' : `${moisDeRetard} MOIS DUS`}
-          </div>
-          {moisDeRetard > 0 && (
-            <div className="text-xs font-black text-red-400 mt-1 uppercase tracking-tighter">
-              {moisEnRetardTexte}
-            </div>
-          )}
+          <button
+            onClick={() => ouvrirDetailSouscripteur(s.id)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-black uppercase text-slate-700 hover:bg-slate-100"
+            aria-label={`Voir le détail de ${s.noms}`}
+          >
+            <Eye size={14} />
+            Détail
+          </button>
         </td>
       </tr>
     )
@@ -543,6 +658,116 @@ autoTable(doc, {
           </table>
         </div>
       </div>
+
+      {detailOuvert && (
+        <div className="fixed inset-0 z-[110]">
+          <button
+            className="absolute inset-0 bg-slate-900/55"
+            onClick={fermerDetail}
+            aria-label="Fermer le détail"
+          />
+
+          <aside className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-white shadow-2xl md:w-[720px]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 md:px-6">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Fiche détaillée</p>
+                <h3 className="text-lg font-black text-slate-900">{detailSelectionne?.noms || 'Chargement...'}</h3>
+              </div>
+              <button
+                onClick={fermerDetail}
+                className="rounded-xl border border-slate-200 p-2 text-slate-700 hover:bg-slate-100"
+                aria-label="Fermer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-4 md:p-6">
+              {detailLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm font-semibold text-slate-600">
+                  Chargement des informations du souscripteur...
+                </div>
+              ) : detailError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700">
+                  {detailError}
+                </div>
+              ) : detailSelectionne ? (
+                <>
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Identité</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="font-black text-slate-600">Nom:</span> {detailSelectionne.noms}</p>
+                      <p><span className="font-black text-slate-600">Fiche:</span> {detailSelectionne.num_fiche}</p>
+                      <p><span className="font-black text-slate-600">Catégorie:</span> {detailSelectionne.categorie || '-'}</p>
+                      <p><span className="font-black text-slate-600">Site:</span> {detailSelectionne.site || '-'}</p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Contacts</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="font-black text-slate-600">Téléphone 1:</span> {detailSelectionne.telephone || '-'}</p>
+                      <p><span className="font-black text-slate-600">Téléphone 2:</span> {detailSelectionne.telephone_2 || '-'}</p>
+                      <p className="sm:col-span-2"><span className="font-black text-slate-600">Email:</span> {detailSelectionne.email || '-'}</p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Foncier</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="font-black text-slate-600">Dimension:</span> {detailSelectionne.dimension || '-'}</p>
+                      <p><span className="font-black text-slate-600">Parcelle:</span> {detailSelectionne.num_parcelle || '-'}</p>
+                      <p><span className="font-black text-slate-600">Cadastral:</span> {detailSelectionne.num_cadastral || '-'}</p>
+                      <p><span className="font-black text-slate-600">Acte:</span> {detailSelectionne.num_acte_vente || '-'}</p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Souscription</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="font-black text-slate-600">Date:</span> {formatDate(detailSelectionne.date_souscription)}</p>
+                      <p>
+                        <span className="font-black text-slate-600">Statut retard:</span>{' '}
+                        <span className={detailSelectionne.retard_mois > 0 ? 'font-black text-red-600' : 'font-black text-green-600'}>
+                          {detailSelectionne.retard_mois > 0 ? `${detailSelectionne.retard_mois} mois` : 'À jour'}
+                        </span>
+                      </p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Recouvrement</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p>
+                        <span className="font-black text-slate-600">Dernier versement:</span>{' '}
+                        {formatDate(detailSelectionne.dernier_versement_date)}
+                        {detailSelectionne.dernier_versement_montant !== null ? ` (${formatMontant(detailSelectionne.dernier_versement_montant)})` : ''}
+                      </p>
+                      <p><span className="font-black text-slate-600">Couverture:</span> {detailSelectionne.couverture}</p>
+                      <p><span className="font-black text-slate-600">Total versé:</span> {formatMontant(detailSelectionne.total_verse)}</p>
+                      <p><span className="font-black text-slate-600">Dette mensuelle:</span> {formatMontant(detailSelectionne.dette_mensuelle)}</p>
+                      <p className="sm:col-span-2">
+                        <span className="font-black text-slate-600">État:</span>{' '}
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${detailSelectionne.etat === 'À JOUR' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {detailSelectionne.etat}
+                        </span>
+                      </p>
+                    </div>
+                  </section>
+
+                  <button
+                    onClick={imprimerFicheSouscripteur}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black uppercase text-white hover:bg-slate-800"
+                  >
+                    <Printer size={16} />
+                    Imprimer fiche souscripteur
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </aside>
+        </div>
+      )}
 
       <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] p-4 z-50">
         <div className="max-w-[1250px] mx-auto flex flex-col gap-4">
