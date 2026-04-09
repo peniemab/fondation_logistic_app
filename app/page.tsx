@@ -7,6 +7,8 @@ import Navigation from '@/components/Navigation'
 import FormulaireCaisse from '@/components/FormulaireCaisse'
 import DashboardAdmin from '@/components/DashboardAdmin'
 import DashboardHome from '@/components/DashboardHome'
+import EcheancesView from '@/components/EcheancesView'
+import RapportsSynthesesView from '@/components/RapportsSynthesesView'
 import RecouvrementView from '@/components/RecouvrementView'
 import SubscribersView from '@/components/SubscribersView'
 
@@ -108,6 +110,8 @@ export default function LogicielFES() {
     if (activeView === 'militaire') return <FormulaireCaisse type="MILITAIRE" />
     if (activeView === 'civil') return <FormulaireCaisse type="CIVIL" />
     if (activeView === 'admin') return <DashboardAdmin />
+    if (activeView === 'echeances') return <EcheancesView />
+    if (activeView === 'rapports') return <RapportsSynthesesView />
     if (activeView === 'recouvrement') return <RecouvrementView />
     if (activeView === 'hub') return <DashboardHome />
     if (activeView === 'subscribers') {
