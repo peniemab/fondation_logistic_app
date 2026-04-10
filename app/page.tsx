@@ -11,6 +11,7 @@ import EcheancesView from '@/components/EcheancesView'
 import RapportsSynthesesView from '@/components/RapportsSynthesesView'
 import RecouvrementView from '@/components/RecouvrementView'
 import SubscribersView from '@/components/SubscribersView'
+import TrashView from '@/components/TrashView'
 
 const sectionLabels: Record<string, { title: string; subtitle: string }> = {
   hub: {
@@ -44,8 +45,10 @@ const sectionLabels: Record<string, { title: string; subtitle: string }> = {
 }
 
 export default function LogicielFES() {
-  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification'>('hub');
+  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification'>('hub');
   const [sessionActive, setSessionActive] = useState(false);
+  const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [isAdminUser, setIsAdminUser] = useState(false);
   const router = useRouter();
   const handleLogout = useCallback(async (reason: string = '') => {
     try {
@@ -72,10 +75,18 @@ export default function LogicielFES() {
 
   useEffect(() => {
     const checkUser = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
         window.location.href = '/login';
       } else {
+        const sessionUser = sessionData.session.user;
+        const email = sessionUser.email || '';
+        const roleFromAppMeta = String(sessionUser.app_metadata?.role || '').toLowerCase();
+        const roleFromUserMeta = String(sessionUser.user_metadata?.role || '').toLowerCase();
+        const isAdmin = email.toLowerCase() === 'coordon@fes.com' || roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin';
+
+        setCurrentUserEmail(email);
+        setIsAdminUser(isAdmin);
         setSessionActive(true);
       }
     };
@@ -114,17 +125,21 @@ export default function LogicielFES() {
     if (activeView === 'rapports') return <RapportsSynthesesView />
     if (activeView === 'recouvrement') return <RecouvrementView />
     if (activeView === 'hub') return <DashboardHome />
+    if (activeView === 'corbeille') return <TrashView isAdmin={isAdminUser} currentUserEmail={currentUserEmail} />
     if (activeView === 'subscribers') {
       return (
         <SubscribersView
           onAddSubscriber={(view) => setActiveView(view)}
+          isAdmin={isAdminUser}
+          currentUserEmail={currentUserEmail}
+          onOpenTrash={() => setActiveView('corbeille')}
         />
       )
     }
 
     const section = sectionLabels[activeView] ?? sectionLabels.hub
     return (
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+      <div className="rounded-4xl border border-slate-200 bg-white p-8 shadow-sm">
         <div className="mb-6">
           <p className="text-sm uppercase tracking-[0.3em] text-blue-700">Bienvenue</p>
           <h1 className="mt-4 text-3xl font-black text-slate-900">{section.title}</h1>
@@ -150,7 +165,7 @@ export default function LogicielFES() {
 
       {/* Main Content */}
       <main className="min-h-[calc(100vh-73px)]">
-        <div className="mx-auto max-w-[1600px] px-4 py-6 md:px-8">
+        <div className="mx-auto max-w-400 px-4 py-6 md:px-8">
           {renderContent()}
         </div>
       </main>

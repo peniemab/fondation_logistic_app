@@ -99,6 +99,7 @@ const [filtreSite, setFiltreSite] = useState<string>('TOUS');
             date_paiement
           )
         `)
+        .is('deleted_at', null)
         .order('num_fiche', { ascending: true })
         .range(page * taillePaquet, (page + 1) * taillePaquet - 1); 
 
@@ -285,6 +286,7 @@ const fluxMensuel = useMemo(() => {
               date_paiement
             )
           `)
+          .is('deleted_at', null)
           .eq('id', id)
           .single();
 

@@ -1,4 +1,9 @@
 -- RPC metier recouvrement: filtrage retard calcule en base pour pagination serveur
+-- Securite de migration: ces colonnes peuvent ne pas exister selon l'ordre d'execution.
+alter table if exists public.souscripteurs
+  add column if not exists deleted_at timestamptz,
+  add column if not exists deleted_by_email text,
+  add column if not exists delete_note text;
 
 create or replace function public.get_recouvrement_rows(
   p_page integer default 1,
@@ -72,6 +77,7 @@ base as (
     ) as mois_ecoules
   from souscripteurs s
   left join paiements_agg pa on pa.num_fiche_key = s.num_fiche
+  where s.deleted_at is null
 ),
 metier as (
   select
@@ -215,6 +221,7 @@ base as (
     ) as mois_ecoules
   from souscripteurs s
   left join paiements_agg pa on pa.num_fiche_key = s.num_fiche
+  where s.deleted_at is null
 ),
 metier as (
   select

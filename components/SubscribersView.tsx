@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
-import { Users, Plus, Search, ChevronDown, X, UserPlus, FileDown } from 'lucide-react'
+import { Users, Plus, Search, ChevronDown, X, UserPlus, FileDown, Eye, Archive, Trash2 } from 'lucide-react'
 
 interface Souscripteur {
   id: string
@@ -14,6 +14,7 @@ interface Souscripteur {
   telephone: string
   telephone_2?: string
   dimension: string
+  nombre_parcelles?: number
   date_souscription: string
   num_parcelle?: string
   num_cadastral?: string
@@ -36,9 +37,12 @@ type AddSubscriberType = 'MILITAIRE' | 'CIVIL'
 
 interface SubscribersViewProps {
   onAddSubscriber?: (view: 'militaire' | 'civil') => void
+  isAdmin?: boolean
+  currentUserEmail?: string
+  onOpenTrash?: () => void
 }
 
-export default function SubscribersView({ onAddSubscriber }: SubscribersViewProps) {
+export default function SubscribersView({ onAddSubscriber, isAdmin = false, currentUserEmail = '', onOpenTrash }: SubscribersViewProps) {
   const PAGE_SIZE = 100
   const SUGGESTIONS_LIMIT = 8
   const [loading, setLoading] = useState(true)
@@ -60,6 +64,12 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
   const [showCategoryMenu, setShowCategoryMenu] = useState(false)
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [loadingExport, setLoadingExport] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [selectedSubscriber, setSelectedSubscriber] = useState<Souscripteur | null>(null)
   const addMenuRef = useRef<HTMLDivElement | null>(null)
   const searchRef = useRef<HTMLDivElement | null>(null)
   const sitesDisponibles = Object.keys(TARIFS_OFFICIELS).sort((a, b) => a.localeCompare(b, 'fr'))
@@ -96,6 +106,10 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
 
   const appliquerFiltresServeur = <T,>(query: T, termOverride?: string) => {
     let q: any = query
+
+    if (typeof q?.is === 'function') {
+      q = q.is('deleted_at', null)
+    }
 
     if (filtreSite !== 'TOUS') {
       q = q.eq('site', filtreSite)
@@ -147,6 +161,7 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
       try {
         const { count, error } = await supabase
           .from('souscripteurs')
+          .is('deleted_at', null)
           .select('*', { count: 'exact', head: true })
 
         if (error) {
@@ -194,7 +209,7 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
 
             let query = supabase
               .from('souscripteurs')
-              .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email', { count: 'exact' })
+              .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, nombre_parcelles, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email', { count: 'exact' })
               .order('num_fiche', { ascending: true })
               .range(from, to)
 
@@ -218,7 +233,7 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
 
               let query = supabase
                 .from('souscripteurs')
-                .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email, quotite_mensuelle, acompte_initial, paiements(montant, date_paiement)')
+                .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, nombre_parcelles, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email, quotite_mensuelle, acompte_initial, paiements(montant, date_paiement)')
                 .order('num_fiche', { ascending: true })
                 .range(from, to)
 
@@ -254,7 +269,7 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
     }
 
     fetchSubscribers()
-  }, [currentPage, filtreSite, filtreCategorie, filtreDimension, filtreRetard, rechercheAppliquee, dateDebut, dateFin])
+  }, [currentPage, filtreSite, filtreCategorie, filtreDimension, filtreRetard, rechercheAppliquee, dateDebut, dateFin, refreshKey])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -277,6 +292,19 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [])
+
+  useEffect(() => {
+    if (!detailOpen) {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [detailOpen])
 
   useEffect(() => {
     const term = recherche.trim()
@@ -307,7 +335,7 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
         try {
           let query = supabase
             .from('souscripteurs')
-            .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email')
+            .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, nombre_parcelles, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email')
             .order('num_fiche', { ascending: true })
             .limit(SUGGESTIONS_LIMIT)
 
@@ -341,6 +369,12 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
     setShowSuggestions(false)
   }
 
+  const formatDateFr = (value?: string) => {
+    if (!value) return '-'
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('fr-FR')
+  }
+
   const annulerRecherche = () => {
     setRecherche('')
     setRechercheAppliquee('')
@@ -356,9 +390,130 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
     setShowSuggestions(false)
   }
 
+  const fermerDetail = () => {
+    setDetailOpen(false)
+    setDetailLoading(false)
+    setDetailError(null)
+    setSelectedSubscriber(null)
+  }
+
+  const ouvrirDetail = async (id: string) => {
+    setDetailOpen(true)
+    setDetailLoading(true)
+    setDetailError(null)
+
+    try {
+      const { data, error } = await supabase
+        .from('souscripteurs')
+        .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, nombre_parcelles, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email')
+        .eq('id', id)
+        .is('deleted_at', null)
+        .single()
+
+      if (error || !data) {
+        throw error || new Error('Souscripteur introuvable')
+      }
+
+      setSelectedSubscriber(data as Souscripteur)
+    } catch (err: unknown) {
+      setSelectedSubscriber(null)
+      setDetailError(err instanceof Error ? err.message : 'Erreur chargement details')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
   const handleAddSubscriber = (type: AddSubscriberType) => {
     if (!onAddSubscriber) return
     onAddSubscriber(type === 'MILITAIRE' ? 'militaire' : 'civil')
+  }
+
+  const supprimerSouscripteur = async (subscriber: Souscripteur) => {
+    if (deleteLoadingId) {
+      return
+    }
+
+    let mode: 'SOFT' | 'HARD' | null = 'SOFT'
+
+    if (isAdmin) {
+      const choice = window.prompt(
+        'Admin: tapez 1 pour CORBEILLE, 2 pour SUPPRESSION DEFINITIVE. Toute autre valeur annule.',
+        '1'
+      )
+
+      if (choice === null) {
+        return
+      }
+
+      if (choice.trim() === '2') {
+        mode = 'HARD'
+      } else if (choice.trim() === '1' || choice.trim() === '') {
+        mode = 'SOFT'
+      } else {
+        return
+      }
+    } else {
+      const confirmSoftDelete = confirm(`Envoyer le dossier #${subscriber.num_fiche} dans la corbeille ?`)
+      if (!confirmSoftDelete) {
+        return
+      }
+    }
+
+    setDeleteLoadingId(subscriber.id)
+    setError(null)
+
+    try {
+      if (mode === 'HARD') {
+        const confirmHardDelete = confirm(`Suppression definitive du dossier #${subscriber.num_fiche} ? Cette action est irreversible.`)
+        if (!confirmHardDelete) {
+          return
+        }
+
+        const ficheAsNumber = Number(subscriber.num_fiche)
+        if (!Number.isNaN(ficheAsNumber)) {
+          const { error: paymentsError } = await supabase
+            .from('paiements')
+            .delete()
+            .eq('num_fiche', ficheAsNumber)
+
+          if (paymentsError) {
+            throw paymentsError
+          }
+        }
+
+        const { error: hardDeleteError } = await supabase
+          .from('souscripteurs')
+          .delete()
+          .eq('id', subscriber.id)
+
+        if (hardDeleteError) {
+          throw hardDeleteError
+        }
+      } else {
+        const { error: softDeleteError } = await supabase
+          .from('souscripteurs')
+          .update({
+            deleted_at: new Date().toISOString(),
+            deleted_by_email: currentUserEmail || null,
+            delete_note: isAdmin ? 'corbeille-admin' : 'corbeille-agent',
+          })
+          .eq('id', subscriber.id)
+
+        if (softDeleteError) {
+          throw softDeleteError
+        }
+      }
+
+      if (selectedSubscriber?.id === subscriber.id) {
+        fermerDetail()
+      }
+
+      setRefreshKey((prev) => prev + 1)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur suppression souscripteur')
+    } finally {
+      setDeleteLoadingId(null)
+    }
   }
 
   const exporterPdf = async () => {
@@ -418,7 +573,7 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
           const to = from + batchSize - 1
           let query = supabase
             .from('souscripteurs')
-            .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email, quotite_mensuelle, acompte_initial, paiements(montant, date_paiement)')
+            .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, nombre_parcelles, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email, quotite_mensuelle, acompte_initial, paiements(montant, date_paiement)')
             .order('num_fiche', { ascending: true })
             .range(from, to)
 
@@ -455,12 +610,6 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
       const logoDataUrl = await loadLogoAsDataUrl()
-      const formatDateFr = (value: string) => {
-        if (!value) return '-'
-        const date = new Date(value)
-        return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('fr-FR')
-      }
-
       // Page de garde
       const pageWidth = doc.internal.pageSize.getWidth()
       const pageHeight = doc.internal.pageSize.getHeight()
@@ -579,6 +728,14 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center justify-end gap-2 md:gap-4">
             <button
+              onClick={() => onOpenTrash?.()}
+              className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-slate-700 transition-colors hover:bg-slate-100 md:px-4"
+            >
+              <Archive size={16} />
+              <span className="hidden md:inline">Corbeille</span>
+            </button>
+
+            <button
               onClick={exporterPdf}
               disabled={loadingExport}
               className="flex items-center gap-2 rounded-2xl bg-slate-700 px-3 py-2 text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 md:px-4"
@@ -603,7 +760,7 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
               </button>
 
               {showCategoryMenu && (
-                <div className="absolute left-0 top-12 z-20 min-w-[220px] rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                <div className="absolute left-0 top-12 z-20 min-w-55 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
                   <button
                     onClick={() => {
                       handleAddSubscriber('MILITAIRE')
@@ -754,13 +911,32 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
             ) : (
               subscribers.map((subscriber) => (
                 <div key={subscriber.id} className="rounded-3xl border border-slate-200 p-4 hover:bg-slate-50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100">
-                      <Users size={18} className="text-slate-600" />
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100">
+                        <Users size={18} className="text-slate-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-black text-slate-900">{subscriber.noms}</p>
+                        <p className="text-xs text-slate-500">Fiche #{subscriber.num_fiche} • {subscriber.telephone || '-'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-black text-slate-900">{subscriber.noms}</p>
-                      <p className="text-xs text-slate-500">Fiche #{subscriber.num_fiche} • {subscriber.telephone || '-'}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => ouvrirDetail(subscriber.id)}
+                        className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100"
+                        aria-label="Voir les details"
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button
+                        onClick={() => supprimerSouscripteur(subscriber)}
+                        disabled={deleteLoadingId === subscriber.id}
+                        className="inline-flex items-center rounded-xl border border-red-200 bg-red-50 p-2 text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Supprimer le souscripteur"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -791,6 +967,81 @@ export default function SubscribersView({ onAddSubscriber }: SubscribersViewProp
           </div>
         </div>
       </div>
+
+      {detailOpen && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4"
+          onClick={fermerDetail}
+        >
+          <div
+            className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-6 flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dossier souscripteur</p>
+                <h2 className="text-2xl font-black text-slate-900">{selectedSubscriber?.noms || 'Chargement...'}</h2>
+              </div>
+              <button
+                onClick={fermerDetail}
+                className="rounded-xl border border-slate-200 p-2 text-slate-600 transition-colors hover:bg-slate-100"
+                aria-label="Fermer les details"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {detailLoading ? (
+              <p className="py-12 text-center text-sm text-slate-500">Chargement des details...</p>
+            ) : detailError ? (
+              <p className="py-12 text-center text-sm text-red-600">{detailError}</p>
+            ) : selectedSubscriber ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="mb-3 text-sm font-semibold text-slate-700">Informations générales</p>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="font-semibold text-slate-600">Fiche:</span> <span className="text-slate-900">#{selectedSubscriber.num_fiche}</span></p>
+                    <p><span className="font-semibold text-slate-600">Catégorie:</span> <span className="text-slate-900">{selectedSubscriber.categorie || '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Site:</span> <span className="text-slate-900">{selectedSubscriber.site || '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Date souscription:</span> <span className="text-slate-900">{formatDateFr(selectedSubscriber.date_souscription)}</span></p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="mb-3 text-sm font-semibold text-slate-700">Contacts</p>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="font-semibold text-slate-600">Téléphone 1:</span> <span className="text-slate-900">{selectedSubscriber.telephone || '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Téléphone 2:</span> <span className="text-slate-900">{selectedSubscriber.telephone_2 || '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Email:</span> <span className="text-slate-900 break-all">{selectedSubscriber.email || '-'}</span></p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4 md:col-span-2">
+                  <p className="mb-3 text-sm font-semibold text-slate-700">Références foncières</p>
+                  <div className="grid gap-2 text-sm md:grid-cols-2">
+                    <p><span className="font-semibold text-slate-600">Dimension:</span> <span className="text-slate-900">{selectedSubscriber.dimension || '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Nombre de parcelles:</span> <span className="text-slate-900">{selectedSubscriber.nombre_parcelles ?? '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Parcelle:</span> <span className="text-slate-900">{selectedSubscriber.num_parcelle || '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Cadastral:</span> <span className="text-slate-900">{selectedSubscriber.num_cadastral || '-'}</span></p>
+                    <p><span className="font-semibold text-slate-600">Acte de vente:</span> <span className="text-slate-900">{selectedSubscriber.num_acte_vente || '-'}</span></p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="py-12 text-center text-sm text-slate-500">Aucun detail disponible.</p>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={fermerDetail}
+                className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mt-6 rounded-3xl border border-red-200 bg-red-50 p-6 text-red-700">

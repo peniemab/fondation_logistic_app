@@ -180,7 +180,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
     const estUnNombre = /^\d+$/.test(recherche);
     const rechercheNettoyee = recherche.trim();
 
-    let query = supabase.from('souscripteurs').select('*');
+    let query = supabase.from('souscripteurs').select('*').is('deleted_at', null);
 
     if (estUnNombre) {
       query = query.or(`num_fiche.eq.${parseInt(rechercheNettoyee)},telephone.eq.${rechercheNettoyee}`);

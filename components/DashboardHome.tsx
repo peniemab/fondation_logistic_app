@@ -42,6 +42,7 @@ export default function DashboardHome() {
         const { count: totalCount, error: countError } = await supabase
           .from('souscripteurs')
           .select('*', { count: 'exact', head: true })
+          .is('deleted_at', null)
 
         if (countError) {
           throw countError
@@ -56,6 +57,7 @@ export default function DashboardHome() {
           const { data, error } = await supabase
             .from('souscripteurs')
             .select(`id, site, prix_total, acompte_initial, paiements(montant)`)
+            .is('deleted_at', null)
             .order('id', { ascending: true })
             .range(i, i + taillePaquet - 1)
 

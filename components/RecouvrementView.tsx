@@ -111,6 +111,8 @@ export default function RecouvrementView() {
   const appliquerFiltresServeur = <T,>(query: T, termOverride?: string) => {
     let q: any = query
 
+    if (typeof q?.is === 'function') q = q.is('deleted_at', null)
+
     if (filtreSite !== 'TOUS') q = q.eq('site', filtreSite)
     if (filtreCategorie !== 'TOUS') q = q.eq('categorie', filtreCategorie)
     if (filtreDimension !== 'TOUS') q = q.eq('dimension', filtreDimension)
@@ -209,7 +211,7 @@ export default function RecouvrementView() {
   useEffect(() => {
     const fetchTotalCount = async () => {
       try {
-        const { count, error } = await supabase.from('souscripteurs').select('*', { count: 'exact', head: true })
+        const { count, error } = await supabase.from('souscripteurs').select('*', { count: 'exact', head: true }).is('deleted_at', null)
         if (error) throw error
         setTotalCount(count || 0)
       } catch (err: unknown) {
@@ -363,6 +365,7 @@ export default function RecouvrementView() {
           )
         `)
         .eq('id', id)
+        .is('deleted_at', null)
         .single()
 
       if (error || !data) throw error || new Error('Souscripteur introuvable')
@@ -545,6 +548,7 @@ export default function RecouvrementView() {
               date_paiement
             )
           `)
+          .is('deleted_at', null)
           .in('num_fiche', chunk)
 
         if (error) throw error
@@ -837,7 +841,7 @@ export default function RecouvrementView() {
         <div className="fixed inset-0 z-50">
           <button className="absolute inset-0 bg-slate-900/55" onClick={fermerDetail} aria-label="Fermer" />
 
-          <aside className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-white shadow-2xl md:w-[720px]">
+          <aside className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-white shadow-2xl md:w-180">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 md:px-6">
               <div>
                 <p className="text-xs font-black uppercase tracking-widest text-slate-500">Fiche detaillee</p>

@@ -1,7 +1,7 @@
 'use client'
 
 import { supabase } from '@/lib/supabase'
-import { ClipboardList, Clock, FileText, Home, Layers, ListChecks, LogOut, ShieldCheck, Users } from 'lucide-react'
+import { Archive, ClipboardList, Clock, FileText, Home, Layers, ListChecks, LogOut, ShieldCheck, Users } from 'lucide-react'
 
 const handleLogout = async () => {
   const confirmLogout = confirm("Voulez-vous vraiment vous déconnecter ?")
@@ -35,6 +35,12 @@ const menuItems = [
     title: 'Souscripteurs',
     description: 'Vues des souscripteurs',
     icon: Users,
+  },
+  {
+    id: 'corbeille',
+    title: 'Corbeille',
+    description: 'Dossiers supprimes logiquement',
+    icon: Archive,
   },
   {
     id: 'recouvrement',

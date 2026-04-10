@@ -115,6 +115,7 @@ export default function EcheancesView() {
 					supabase
 						.from('souscripteurs')
 						.select('id, num_fiche, noms, site, dimension, telephone, date_souscription, quotite_mensuelle, acompte_initial')
+						.is('deleted_at', null)
 						.order('num_fiche', { ascending: false })
 						.limit(1200),
 					supabase
