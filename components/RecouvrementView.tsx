@@ -600,11 +600,11 @@ export default function RecouvrementView() {
 
       doc.setFontSize(15)
       doc.setTextColor(51, 65, 85)
-      doc.text('Liste Recouvrement - Export PDF', pageWidth / 2, 80, { align: 'center' })
+      doc.text('Liste Recouvrement', pageWidth / 2, 80, { align: 'center' })
 
       doc.setFontSize(10)
       doc.setTextColor(100)
-      doc.text(`Genere le ${new Date().toLocaleDateString('fr-FR')}`, pageWidth / 2, 90, { align: 'center' })
+      doc.text(` ${new Date().toLocaleDateString('fr-FR')}`, pageWidth / 2, 90, { align: 'center' })
 
       const lignesContexte = [
         `Site: ${filtreSite === 'TOUS' ? 'Tous' : filtreSite}`,
@@ -612,7 +612,6 @@ export default function RecouvrementView() {
         `Dimension: ${filtreDimension === 'TOUS' ? 'Toutes' : filtreDimension}`,
         `Contentieux: ${contentieuxLabel}`,
         `Periode: ${periodeLabel}`,
-        `Recherche: ${rechercheLabel}`,
         `Dossiers exportes: ${allRows.length}`,
       ]
 

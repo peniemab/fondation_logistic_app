@@ -37,6 +37,12 @@ const menuItems = [
     icon: Users,
   },
   {
+    id: 'recouvrement',
+    title: 'Recouvrement',
+    description: 'Suivi des encaissements et relances',
+    icon: ShieldCheck,
+  },
+  {
     id: 'echeances',
     title: 'Échéances mensuelles',
     description: 'Suivi des échéances',
@@ -53,12 +59,6 @@ const menuItems = [
     title: 'Journal d’audits',
     description: 'Contrôles et historique',
     icon: ListChecks,
-  },
-  {
-    id: 'recouvrement',
-    title: 'Recouvrement',
-    description: 'Suivi des encaissements et relances',
-    icon: ShieldCheck,
   },
   {
     id: 'verification',
