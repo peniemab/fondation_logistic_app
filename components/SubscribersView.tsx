@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
-import { Users, Plus, Search, ChevronDown, X, UserPlus, FileDown, Eye, Archive, Trash2 } from 'lucide-react'
+import { Users, Plus, Search, ChevronDown, X, UserPlus, FileDown, Eye, Trash2 } from 'lucide-react'
 
 interface Souscripteur {
   id: string
@@ -161,16 +161,26 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
       try {
         const { count, error } = await supabase
           .from('souscripteurs')
-          .is('deleted_at', null)
           .select('*', { count: 'exact', head: true })
+          .is('deleted_at', null)
 
         if (error) {
-          throw error
+          // Fallback si la colonne deleted_at n'existe pas encore en base.
+          const fallback = await supabase
+            .from('souscripteurs')
+            .select('*', { count: 'exact', head: true })
+
+          if (fallback.error) {
+            throw fallback.error
+          }
+
+          setTotalCount(fallback.count || 0)
+          return
         }
 
         setTotalCount(count || 0)
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Erreur inconnue')
+        setError(err instanceof Error ? err.message : 'Erreur chargement total global')
       }
     }
 
@@ -728,14 +738,6 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="mb-6 flex items-center justify-end gap-2 md:gap-4">
             <button
-              onClick={() => onOpenTrash?.()}
-              className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-slate-700 transition-colors hover:bg-slate-100 md:px-4"
-            >
-              <Archive size={16} />
-              <span className="hidden md:inline">Corbeille</span>
-            </button>
-
-            <button
               onClick={exporterPdf}
               disabled={loadingExport}
               className="flex items-center gap-2 rounded-2xl bg-slate-700 px-3 py-2 text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 md:px-4"
@@ -929,14 +931,6 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
                       >
                         <Eye size={16} />
                       </button>
-                      <button
-                        onClick={() => supprimerSouscripteur(subscriber)}
-                        disabled={deleteLoadingId === subscriber.id}
-                        className="inline-flex items-center rounded-xl border border-red-200 bg-red-50 p-2 text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        aria-label="Supprimer le souscripteur"
-                      >
-                        <Trash2 size={16} />
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -969,77 +963,88 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
       </div>
 
       {detailOpen && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4"
-          onClick={fermerDetail}
-        >
-          <div
-            className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-6 flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 z-50">
+          <button className="absolute inset-0 bg-slate-900/55" onClick={fermerDetail} aria-label="Fermer" />
+
+          <aside className="absolute right-0 top-0 h-full w-full overflow-y-auto bg-white shadow-2xl md:w-180">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 md:px-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dossier souscripteur</p>
-                <h2 className="text-2xl font-black text-slate-900">{selectedSubscriber?.noms || 'Chargement...'}</h2>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Fiche detaillee</p>
+                <h3 className="text-lg font-black text-slate-900">{selectedSubscriber?.noms || 'Chargement...'}</h3>
               </div>
               <button
                 onClick={fermerDetail}
-                className="rounded-xl border border-slate-200 p-2 text-slate-600 transition-colors hover:bg-slate-100"
-                aria-label="Fermer les details"
+                className="rounded-xl border border-slate-200 p-2 text-slate-700 hover:bg-slate-100"
+                aria-label="Fermer"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </div>
 
-            {detailLoading ? (
-              <p className="py-12 text-center text-sm text-slate-500">Chargement des details...</p>
-            ) : detailError ? (
-              <p className="py-12 text-center text-sm text-red-600">{detailError}</p>
-            ) : selectedSubscriber ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="mb-3 text-sm font-semibold text-slate-700">Informations générales</p>
-                  <div className="space-y-2 text-sm">
-                    <p><span className="font-semibold text-slate-600">Fiche:</span> <span className="text-slate-900">#{selectedSubscriber.num_fiche}</span></p>
-                    <p><span className="font-semibold text-slate-600">Catégorie:</span> <span className="text-slate-900">{selectedSubscriber.categorie || '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Site:</span> <span className="text-slate-900">{selectedSubscriber.site || '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Date souscription:</span> <span className="text-slate-900">{formatDateFr(selectedSubscriber.date_souscription)}</span></p>
-                  </div>
+            <div className="space-y-5 p-4 md:p-6">
+              {detailLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm font-semibold text-slate-600">
+                  Chargement des informations du souscripteur...
                 </div>
+              ) : detailError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700">{detailError}</div>
+              ) : selectedSubscriber ? (
+                <>
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Identite</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="font-black text-slate-600">Nom:</span> {selectedSubscriber.noms}</p>
+                      <p><span className="font-black text-slate-600">Fiche:</span> {selectedSubscriber.num_fiche}</p>
+                      <p><span className="font-black text-slate-600">Categorie:</span> {selectedSubscriber.categorie || '-'}</p>
+                      <p><span className="font-black text-slate-600">Site:</span> {selectedSubscriber.site || '-'}</p>
+                      <p><span className="font-black text-slate-600">Date:</span> {formatDateFr(selectedSubscriber.date_souscription)}</p>
+                    </div>
+                  </section>
 
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="mb-3 text-sm font-semibold text-slate-700">Contacts</p>
-                  <div className="space-y-2 text-sm">
-                    <p><span className="font-semibold text-slate-600">Téléphone 1:</span> <span className="text-slate-900">{selectedSubscriber.telephone || '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Téléphone 2:</span> <span className="text-slate-900">{selectedSubscriber.telephone_2 || '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Email:</span> <span className="text-slate-900 break-all">{selectedSubscriber.email || '-'}</span></p>
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Contacts</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="font-black text-slate-600">Telephone 1:</span> {selectedSubscriber.telephone || '-'}</p>
+                      <p><span className="font-black text-slate-600">Telephone 2:</span> {selectedSubscriber.telephone_2 || '-'}</p>
+                      <p className="sm:col-span-2 break-all"><span className="font-black text-slate-600">Email:</span> {selectedSubscriber.email || '-'}</p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 p-4">
+                    <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Foncier</h4>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="font-black text-slate-600">Dimension:</span> {selectedSubscriber.dimension || '-'}</p>
+                      <p><span className="font-black text-slate-600">Nombre de parcelles:</span> {selectedSubscriber.nombre_parcelles ?? '-'}</p>
+                      <p><span className="font-black text-slate-600">Parcelle:</span> {selectedSubscriber.num_parcelle || '-'}</p>
+                      <p><span className="font-black text-slate-600">Cadastral:</span> {selectedSubscriber.num_cadastral || '-'}</p>
+                      <p className="sm:col-span-2"><span className="font-black text-slate-600">Acte de vente:</span> {selectedSubscriber.num_acte_vente || '-'}</p>
+                    </div>
+                  </section>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => supprimerSouscripteur(selectedSubscriber)}
+                      disabled={deleteLoadingId === selectedSubscriber.id}
+                      className="inline-flex items-center rounded-xl border border-red-200 bg-red-50 p-2 text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Supprimer le souscripteur"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                    <button
+                      onClick={fermerDetail}
+                      className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900"
+                    >
+                      Fermer
+                    </button>
                   </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm font-semibold text-slate-600">
+                  Aucun detail disponible.
                 </div>
-
-                <div className="rounded-2xl bg-slate-50 p-4 md:col-span-2">
-                  <p className="mb-3 text-sm font-semibold text-slate-700">Références foncières</p>
-                  <div className="grid gap-2 text-sm md:grid-cols-2">
-                    <p><span className="font-semibold text-slate-600">Dimension:</span> <span className="text-slate-900">{selectedSubscriber.dimension || '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Nombre de parcelles:</span> <span className="text-slate-900">{selectedSubscriber.nombre_parcelles ?? '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Parcelle:</span> <span className="text-slate-900">{selectedSubscriber.num_parcelle || '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Cadastral:</span> <span className="text-slate-900">{selectedSubscriber.num_cadastral || '-'}</span></p>
-                    <p><span className="font-semibold text-slate-600">Acte de vente:</span> <span className="text-slate-900">{selectedSubscriber.num_acte_vente || '-'}</span></p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="py-12 text-center text-sm text-slate-500">Aucun detail disponible.</p>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={fermerDetail}
-                className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-900"
-              >
-                Fermer
-              </button>
+              )}
             </div>
-          </div>
+          </aside>
         </div>
       )}
 
