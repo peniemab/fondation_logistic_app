@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 
+type ActiveView = 'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres'
+
 export default function Navigation({
   activeView,
   setActiveView,
@@ -10,8 +12,8 @@ export default function Navigation({
   currentUserId,
   isAdmin,
 }: {
-  activeView: string
-  setActiveView: (view: string) => void
+  activeView: ActiveView
+  setActiveView: (view: ActiveView) => void
   currentUserEmail: string
   currentUserId: string
   isAdmin: boolean
@@ -77,7 +79,7 @@ export default function Navigation({
           currentUserEmail={currentUserEmail}
           currentUserId={currentUserId}
           isAdmin={isAdmin}
-          setActiveView={(view: string) => {
+          setActiveView={(view: ActiveView) => {
             setActiveView(view)
             setIsMenuOpen(false)
           }}

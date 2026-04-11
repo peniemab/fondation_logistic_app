@@ -1,7 +1,17 @@
 'use client'
 
+import type { ComponentType } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Archive, ClipboardList, Clock, FileText, Home, Layers, ListChecks, LogOut, Settings2, ShieldCheck, UserCircle2, Users } from 'lucide-react'
+
+type ActiveView = 'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres'
+
+type MenuItem = {
+  id: Exclude<ActiveView, 'parametres'>
+  title: string
+  description: string
+  icon: ComponentType<{ size?: number }>
+}
 
 const handleLogout = async () => {
   const confirmLogout = confirm("Voulez-vous vraiment vous déconnecter ?")
@@ -11,7 +21,7 @@ const handleLogout = async () => {
   }
 }
 
-const menuItems = [
+const menuItems: MenuItem[] = [
   {
     id: 'hub',
     title: 'Accueil',
@@ -82,11 +92,11 @@ export default function Sidebar({
   isAdmin,
   setActiveView,
 }: {
-  activeView: string
+  activeView: ActiveView
   currentUserEmail: string
   currentUserId: string
   isAdmin: boolean
-  setActiveView: (view: string) => void
+  setActiveView: (view: ActiveView) => void
 }) {
   const visibleMenuItems = menuItems.filter((item) => {
     if (!isAdmin && item.id === 'audits') {
@@ -100,7 +110,7 @@ export default function Sidebar({
     ? [
       ...visibleMenuItems,
       {
-        id: 'parametres',
+        id: 'parametres' as ActiveView,
         title: 'Paramètres',
         description: 'Gestion des utilisateurs',
         icon: Settings2,
