@@ -106,35 +106,51 @@ export default function LogicielFES() {
     }
   }, []);
 
+  const applyUserState = useCallback(async () => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData.session) {
+      window.location.href = '/login'
+      return
+    }
+
+    const { data: userData } = await supabase.auth.getUser()
+    const sessionUser = userData.user || sessionData.session.user
+
+    if (!isUserActive(sessionUser)) {
+      await handleLogout('inactive')
+      return
+    }
+
+    const email = sessionUser.email || ''
+    const roleFromAppMeta = String(sessionUser.app_metadata?.role || '').toLowerCase()
+    const roleFromUserMeta = String(sessionUser.user_metadata?.role || '').toLowerCase()
+    const isAdmin = roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin'
+    const permissions = getUserPermissions(sessionUser)
+
+    setCurrentUserId(sessionUser.id)
+    setCurrentUserEmail(email)
+    setIsAdminUser(isAdmin)
+    setUserPermissions(permissions)
+    setSessionActive(true)
+  }, [handleLogout])
+
   useEffect(() => {
     const checkUser = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
-        window.location.href = '/login';
-      } else {
-        const { data: userData } = await supabase.auth.getUser();
-        const sessionUser = userData.user || sessionData.session.user;
-
-        if (!isUserActive(sessionUser)) {
-          await handleLogout('inactive');
-          return;
-        }
-
-        const email = sessionUser.email || '';
-        const roleFromAppMeta = String(sessionUser.app_metadata?.role || '').toLowerCase();
-        const roleFromUserMeta = String(sessionUser.user_metadata?.role || '').toLowerCase();
-        const isAdmin = roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin';
-        const permissions = getUserPermissions(sessionUser)
-
-        setCurrentUserId(sessionUser.id);
-        setCurrentUserEmail(email);
-        setIsAdminUser(isAdmin);
-        setUserPermissions(permissions);
-        setSessionActive(true);
-      }
+      await applyUserState()
     };
     checkUser();
-  }, [handleLogout, router]);
+  }, [applyUserState, router]);
+
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      applyUserState()
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus)
+    }
+  }, [applyUserState])
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -157,6 +173,15 @@ export default function LogicielFES() {
       events.forEach(event => window.removeEventListener(event, resetTimer));
     };
   }, [handleLogout]);
+
+  useEffect(() => {
+    const sensitiveViews = new Set(['recouvrement', 'rapports', 'echeances'])
+    if (!sensitiveViews.has(activeView)) {
+      return
+    }
+
+    applyUserState()
+  }, [activeView, applyUserState])
 
   if (!sessionActive) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-bold">VÉRIFICATION...</div>;
 
