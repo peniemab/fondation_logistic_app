@@ -17,9 +17,10 @@ interface Paiement {
 
 interface Props {
   type: 'MILITAIRE' | 'CIVIL';
+  onOpenCaisse?: (numFiche: string) => void;
 }
 
-export default function FormulaireCaisse({ type }: Props) {
+export default function FormulaireCaisse({ type, onOpenCaisse }: Props) {
   const [loading, setLoading] = useState(false)
   const [recherche, setRecherche] = useState('')
   const [paiements, setPaiements] = useState<Paiement[]>([])
@@ -423,19 +424,19 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
                 </div>
               </section>
 
-              <section className="bg-slate-900 p-2 rounded-lg text-white print:hidden">
-                <h3 className="text-yellow-500 font-black text-xs uppercase mb-3 italic">Saisie Nouveau Paiement</h3>
-                <div className="flex flex-col md:flex-row gap-2">
-                  <input
-                    type="date"
-                    value={datePaiement}
-                    onChange={(e) => setDatePaiement(e.target.value)}
-                    className="bg-slate-800 p-3 rounded font-bold md:w-44 outline-none text-xs text-yellow-500"
-                  />
-                  <input type="number" placeholder="MONTANT $" value={montantSaisie} onChange={(e) => setMontantSaisie(e.target.value)} className="bg-slate-800 p-3 rounded font-bold md:w-32 outline-none" />
-                  <input type="text" placeholder="RÉFÉRENCE BORDEREAU" value={refBordereau} onChange={(e) => setRefBordereau(e.target.value)} className="bg-slate-800 p-3 rounded font-bold flex-1 uppercase outline-none" />
-                  <button onClick={ajouterPaiement} className="bg-yellow-500 text-slate-900 p-3 font-black uppercase text-xs hover:bg-white transition-all">Valider</button>
-                </div>
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 print:hidden">
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Encaissement</h3>
+                <p className="mt-2 text-xs text-slate-600">
+                  Acompte initial: perçu automatiquement à la création. Les versements manuels et l'historique sont gérés dans la vue Caisse.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onOpenCaisse?.(String(fiche.num_fiche || '').trim())}
+                  disabled={!fiche.id || !onOpenCaisse}
+                  className="mt-3 rounded-xl bg-blue-900 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  Ouvrir la caisse pour cette fiche
+                </button>
               </section>
             </div>
 
@@ -454,37 +455,6 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
                 <div className="h-20 flex items-center justify-center text-xs text-slate-300">Emplacement du Cachet</div>
               </div>
             </div>
-
-            <section className="mt-25 overflow-x-auto">
-              <h2 className="text-blue-900 font-black text-xs uppercase mb-4">VI. Historique des Versements</h2>
-              <table className="w-full border-collapse border border-slate-200 text-xs">
-                <thead className="bg-slate-900 text-white print:bg-slate-100 print:text-black">
-                  <tr>
-                    <th className="p-1 border">Date</th>
-                    <th className="p-1 border">Référence</th>
-                    <th className="p-1 border text-right">Montant</th>
-                    <th className="p-1 border text-center print:hidden">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paiements.map((p: any, i) => (
-                    <tr key={i} className="text-center italic hover:bg-slate-50 transition-colors">
-                      <td className="p-1 border">{new Date(p.created_at).toLocaleDateString()}</td>
-                      <td className="p-1 border font-bold uppercase">{p.reference_bordereau}</td>
-                      <td className="p-1 border text-right font-black">{p.montant}$</td>
-                      <td className="p-1 border text-center print:hidden">
-                        <button
-                          onClick={() => tenterSuppressionPaiement(p)}
-                          className="text-red-500 hover:text-red-700 font-bold px-2"
-                        >
-                          SUPP
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
 
             <div className="hidden print:block mt-8 md:mt-12 pt-4 border-t border-slate-100 text-center">
               <div className="flex flex-col items-center gap-1">

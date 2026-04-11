@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 
-type ActiveView = 'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres'
+type ActiveView = 'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres' | 'caisse'
 
 export default function Navigation({
   activeView,

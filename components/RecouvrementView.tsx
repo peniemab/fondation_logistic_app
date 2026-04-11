@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
-import { Eye, FileDown, Search, Users, X } from 'lucide-react'
+import { Eye, FileDown, Users, X } from 'lucide-react'
+import UnifiedSearchBar, { type UnifiedSuggestion } from './UnifiedSearchBar'
 
 interface RecouvrementRow {
   id: string
@@ -47,6 +48,7 @@ interface RecouvrementDetail {
 
 export default function RecouvrementView() {
   const PAGE_SIZE = 100
+  const SUGGESTIONS_LIMIT = 8
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +60,9 @@ export default function RecouvrementView() {
 
   const [recherche, setRecherche] = useState('')
   const [rechercheAppliquee, setRechercheAppliquee] = useState('')
+  const [suggestions, setSuggestions] = useState<RecouvrementRow[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [dateDebut, setDateDebut] = useState('')
   const [dateFin, setDateFin] = useState('')
   const [filtreSite, setFiltreSite] = useState<string>('TOUS')
@@ -317,15 +322,81 @@ export default function RecouvrementView() {
     setCurrentPage(1)
   }, [filtreSite, filtreCategorie, filtreDimension, filtreRetard, rechercheAppliquee, dateDebut, dateFin])
 
+  useEffect(() => {
+    const term = recherche.trim()
+
+    if (term.length < 2) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setLoadingSuggestions(true)
+
+        const { data, error } = await supabase.rpc('get_recouvrement_rows', {
+          ...buildRpcBaseParams(term),
+          p_page: 1,
+          p_page_size: SUGGESTIONS_LIMIT,
+        })
+
+        if (error) {
+          throw error
+        }
+
+        setSuggestions((data as RecouvrementRow[]) || [])
+        setShowSuggestions(true)
+      } catch {
+        try {
+          let query = supabase
+            .from('souscripteurs')
+            .select('id, num_fiche, noms, categorie, site, telephone, dimension, date_souscription')
+            .order('num_fiche', { ascending: true })
+            .limit(SUGGESTIONS_LIMIT)
+
+          query = appliquerFiltresServeur(query, term)
+
+          const { data, error } = await query
+          if (error) {
+            throw error
+          }
+
+          setSuggestions((data as RecouvrementRow[]) || [])
+          setShowSuggestions(true)
+        } catch {
+          setSuggestions([])
+          setShowSuggestions(false)
+        }
+      } finally {
+        setLoadingSuggestions(false)
+      }
+    }, 300)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [recherche, filtreSite, filtreCategorie, filtreDimension, filtreRetard, dateDebut, dateFin])
+
   const executerRecherche = () => {
     setRechercheAppliquee(recherche)
     setCurrentPage(1)
+    setShowSuggestions(false)
   }
 
   const annulerRecherche = () => {
     setRecherche('')
     setRechercheAppliquee('')
     setCurrentPage(1)
+    setSuggestions([])
+    setShowSuggestions(false)
+  }
+
+  const choisirSuggestion = (value: string) => {
+    setRecherche(value)
+    setRechercheAppliquee(value)
+    setCurrentPage(1)
+    setShowSuggestions(false)
   }
 
   const fermerDetail = () => {
@@ -761,23 +832,25 @@ export default function RecouvrementView() {
             </div>
           </div>
 
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Rechercher par nom, fiche, telephone, parcelle..."
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && executerRecherche()}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-4 pr-12 outline-none transition-all focus:border-blue-300 focus:ring-4 ring-blue-900/5"
-            />
-            <button
-              onClick={hasActiveSearch ? annulerRecherche : executerRecherche}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-xl bg-blue-600 p-2 text-white transition-colors hover:bg-blue-700"
-              aria-label={hasActiveSearch ? 'Annuler la recherche' : 'Executer la recherche'}
-            >
-              {hasActiveSearch ? <X size={16} /> : <Search size={16} />}
-            </button>
-          </div>
+          <UnifiedSearchBar
+            value={recherche}
+            placeholder="Rechercher par nom, fiche, telephone, parcelle..."
+            hasActiveSearch={hasActiveSearch}
+            onChange={setRecherche}
+            onSubmit={executerRecherche}
+            onClear={annulerRecherche}
+            suggestions={suggestions.map((item): UnifiedSuggestion => ({
+              id: item.id,
+              title: item.noms,
+              subtitle: `Fiche #${item.num_fiche} • ${item.telephone || '-'}`,
+              value: item.noms,
+            }))}
+            showSuggestions={showSuggestions}
+            onShowSuggestionsChange={setShowSuggestions}
+            onSelectSuggestion={(item) => choisirSuggestion(item.value || item.title)}
+            loadingSuggestions={loadingSuggestions}
+            emptySuggestionsText="Aucune suggestion"
+          />
         </div>
 
         <div className="max-h-96 space-y-3 overflow-y-auto">

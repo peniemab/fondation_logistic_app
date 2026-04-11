@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
-import { Users, Plus, Search, ChevronDown, X, UserPlus, FileDown, Eye, Trash2 } from 'lucide-react'
+import { Users, Plus, ChevronDown, X, UserPlus, FileDown, Eye, Trash2, Printer } from 'lucide-react'
+import { QRCodeCanvas } from 'qrcode.react'
+import UnifiedSearchBar, { type UnifiedSuggestion } from './UnifiedSearchBar'
 
 interface Souscripteur {
   id: string
@@ -20,6 +22,15 @@ interface Souscripteur {
   num_cadastral?: string
   num_acte_vente?: string
   email?: string
+  // champs détail complet
+  genre?: string
+  matricule?: string
+  num_piece_id?: string
+  fonction?: string
+  employeur?: string
+  avenue_num?: string
+  quartier?: string
+  commune?: string
 }
 
 interface Paiement {
@@ -70,8 +81,9 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [selectedSubscriber, setSelectedSubscriber] = useState<Souscripteur | null>(null)
+  const [detailPaiements, setDetailPaiements] = useState<{ date_paiement: string; reference_bordereau: string; montant: number; statut: string }[]>([])
   const addMenuRef = useRef<HTMLDivElement | null>(null)
-  const searchRef = useRef<HTMLDivElement | null>(null)
+  const qrRef = useRef<HTMLDivElement | null>(null)
   const sitesDisponibles = Object.keys(TARIFS_OFFICIELS).sort((a, b) => a.localeCompare(b, 'fr'))
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE))
   const hasActiveSearch = rechercheAppliquee.trim() !== ''
@@ -291,10 +303,6 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
       if (!addMenuRef.current.contains(event.target as Node)) {
         setShowCategoryMenu(false)
       }
-
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false)
-      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
@@ -421,17 +429,19 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
     setDetailLoading(false)
     setDetailError(null)
     setSelectedSubscriber(null)
+    setDetailPaiements([])
   }
 
   const ouvrirDetail = async (id: string) => {
     setDetailOpen(true)
     setDetailLoading(true)
     setDetailError(null)
+    setDetailPaiements([])
 
     try {
       const { data, error } = await supabase
         .from('souscripteurs')
-        .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, nombre_parcelles, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email')
+        .select('id, num_fiche, noms, categorie, site, telephone, telephone_2, dimension, nombre_parcelles, date_souscription, num_parcelle, num_cadastral, num_acte_vente, email, genre, matricule, num_piece_id, fonction, employeur, avenue_num, quartier, commune')
         .eq('id', id)
         .is('deleted_at', null)
         .single()
@@ -441,12 +451,185 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
       }
 
       setSelectedSubscriber(data as Souscripteur)
+
+      const { data: paiementsData } = await supabase
+        .from('paiements')
+        .select('date_paiement, reference_bordereau, montant, statut')
+        .eq('num_fiche', data.num_fiche)
+        .order('date_paiement', { ascending: true })
+
+      setDetailPaiements(paiementsData ?? [])
     } catch (err: unknown) {
       setSelectedSubscriber(null)
       setDetailError(err instanceof Error ? err.message : 'Erreur chargement details')
     } finally {
       setDetailLoading(false)
     }
+  }
+
+  const imprimerFiche = async () => {
+    if (!selectedSubscriber) return
+
+    const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ])
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const W = 210
+    const cX = W / 2
+    const mL = 15
+    const mR = W - 15
+
+    // --- Logo ---
+    try {
+      const blob = await fetch('/FES.jpg').then(r => r.blob())
+      const logoBase64 = await new Promise<string>((res) => {
+        const reader = new FileReader()
+        reader.onload = () => res(reader.result as string)
+        reader.readAsDataURL(blob)
+      })
+      doc.addImage(logoBase64, 'JPEG', mL, 8, 22, 22)
+    } catch { /* logo optionnel */ }
+
+    // --- En-tête ---
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text('FONDATION EL-SHADDAÏ / MBA', cX, 14, { align: 'center' })
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Système de Gestion des Souscripteurs Fonciers', cX, 19, { align: 'center' })
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`FICHE DE SOUSCRIPTION N° ${selectedSubscriber.num_fiche}`, cX, 25, { align: 'center' })
+    doc.setLineWidth(0.5)
+    doc.line(mL, 30, mR, 30)
+
+    let y = 36
+
+    const drawSection = (title: string, rows: [string, string][]) => {
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 64, 175)
+      doc.text(title, mL, y)
+      doc.setTextColor(0, 0, 0)
+      y += 5
+      const colW = (W - mL * 2) / 2
+      rows.forEach(([label, value], i) => {
+        const x = i % 2 === 0 ? mL : mL + colW
+        if (i % 2 === 0 && i > 0) y += 6
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(8)
+        doc.text(`${label}:`, x, y)
+        doc.setFont('helvetica', 'normal')
+        doc.text(value || '-', x + 28, y)
+        if (i % 2 === 1 || i === rows.length - 1) y += 6
+      })
+      y += 3
+    }
+
+    const fmt = (v?: string) => {
+      if (!v) return '-'
+      const d = new Date(v)
+      return isNaN(d.getTime()) ? v : d.toLocaleDateString('fr-FR')
+    }
+
+    const nb = parseInt(selectedSubscriber.nombre_parcelles?.toString() ?? '1') || 1
+    const tarif = TARIFS_OFFICIELS[selectedSubscriber.site]?.[selectedSubscriber.dimension]
+    const modalites = tarif
+      ? { total: tarif.total * nb, acompte: tarif.acompte * nb, mensualite: tarif.mensualite * nb }
+      : { total: 0, acompte: 0, mensualite: 0 }
+
+    const totalVerse = detailPaiements.reduce((acc, p) => acc + p.montant, 0) + modalites.acompte
+    const reste = modalites.total - totalVerse
+
+    drawSection('I. IDENTIFICATION', [
+      ['Nom complet', selectedSubscriber.noms],
+      ['Genre', selectedSubscriber.genre === 'F' ? 'FEMME' : 'HOMME'],
+      ['Catégorie', selectedSubscriber.categorie],
+      ['Date', fmt(selectedSubscriber.date_souscription)],
+      ['Employeur', selectedSubscriber.employeur ?? '-'],
+      ['Matricule', selectedSubscriber.matricule ?? '-'],
+      ['Fonction', selectedSubscriber.fonction ?? '-'],
+      ["Pièce d'ID", selectedSubscriber.num_piece_id ?? '-'],
+    ])
+
+    drawSection('II. ADRESSE & CONTACTS', [
+      ['Avenue', selectedSubscriber.avenue_num ?? '-'],
+      ['Quartier', selectedSubscriber.quartier ?? '-'],
+      ['Commune', selectedSubscriber.commune ?? '-'],
+      ['Téléphone 1', selectedSubscriber.telephone],
+      ['Téléphone 2', selectedSubscriber.telephone_2 ?? '-'],
+      ['Email', selectedSubscriber.email ?? '-'],
+    ])
+
+    drawSection('III. DONNÉES FONCIÈRES', [
+      ['Site', selectedSubscriber.site],
+      ['Dimension', selectedSubscriber.dimension],
+      ['Nb parcelles', String(selectedSubscriber.nombre_parcelles ?? 1)],
+      ['N° parcelle', selectedSubscriber.num_parcelle ?? '-'],
+      ['N° cadastral', selectedSubscriber.num_cadastral ?? '-'],
+      ['Acte de vente', selectedSubscriber.num_acte_vente ?? '-'],
+    ])
+
+    drawSection('IV. MODALITÉS FINANCIÈRES', [
+      ['Prix total', `${modalites.total.toLocaleString('fr-FR')} $`],
+      ['Acompte initial', `${modalites.acompte.toLocaleString('fr-FR')} $`],
+      ['Mensualité', `${modalites.mensualite.toLocaleString('fr-FR')} $`],
+      ['Total versé', `${totalVerse.toLocaleString('fr-FR')} $`],
+      ['Reste à payer', `${Math.max(0, reste).toLocaleString('fr-FR')} $`],
+      ['Statut', reste <= 0 ? 'À JOUR' : 'EN COURS'],
+    ])
+
+    // --- QR code ---
+    const canvas = qrRef.current?.querySelector('canvas')
+    if (canvas) {
+      const qrDataURL = canvas.toDataURL('image/png')
+      doc.addImage(qrDataURL, 'PNG', mR - 28, 30, 28, 28)
+      doc.setFontSize(7)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`N° ${selectedSubscriber.num_fiche}`, mR - 14, 62, { align: 'center' })
+    }
+
+    // --- Pied de page page 1 ---
+    doc.setFontSize(7)
+    doc.setTextColor(150)
+    doc.text(`Document généré le ${new Date().toLocaleDateString('fr-FR')} — Système FES / MBA`, cX, 288, { align: 'center' })
+    doc.setTextColor(0)
+
+    // --- Page 2 : historique des versements ---
+    doc.addPage()
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`HISTORIQUE DES VERSEMENTS — N° ${selectedSubscriber.num_fiche}`, cX, 18, { align: 'center' })
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.text(selectedSubscriber.noms, cX, 24, { align: 'center' })
+    doc.line(mL, 28, mR, 28)
+
+    autoTable(doc, {
+      startY: 33,
+      head: [['#', 'Date de paiement', 'Référence bordereau', 'Montant ($)', 'Statut']],
+      body: detailPaiements.length > 0
+        ? detailPaiements.map((p, i) => [
+            i + 1,
+            fmt(p.date_paiement),
+            p.reference_bordereau || '-',
+            p.montant.toLocaleString('fr-FR'),
+            p.statut,
+          ])
+        : [['', 'Aucun versement enregistré', '', '', '']],
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [30, 64, 175], textColor: 255, fontStyle: 'bold' },
+      columnStyles: { 0: { halign: 'center', cellWidth: 12 }, 3: { halign: 'right' }, 4: { halign: 'center' } },
+      margin: { left: mL, right: mL },
+    })
+
+    doc.setFontSize(7)
+    doc.setTextColor(150)
+    doc.text(`Document généré le ${new Date().toLocaleDateString('fr-FR')} — Système FES / MBA`, cX, 288, { align: 'center' })
+
+    doc.save(`Fiche_${selectedSubscriber.num_fiche}_${selectedSubscriber.noms.replace(/\s+/g, '_')}.pdf`)
   }
 
   const handleAddSubscriber = (type: AddSubscriberType) => {
@@ -874,47 +1057,25 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
             </div>
 
             {/* Barre de recherche */}
-            <div ref={searchRef} className="relative">
-              <input
-                type="text"
-                placeholder="Rechercher par Nom, N° Fiche, Téléphone, N° Parcelle, Cadastral, Acte vente..."
-                value={recherche}
-                onChange={(e) => setRecherche(e.target.value)}
-                onFocus={() => {
-                  if (suggestions.length > 0) setShowSuggestions(true)
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && executerRecherche()}
-                className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 ring-blue-900/5 focus:border-blue-300 transition-all"
-              />
-              <button
-                onClick={hasActiveSearch ? annulerRecherche : executerRecherche}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
-                aria-label={hasActiveSearch ? 'Annuler la recherche' : 'Executer la recherche'}
-              >
-                {hasActiveSearch ? <X size={16} /> : <Search size={16} />}
-              </button>
-
-              {showSuggestions && (
-                <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                  {loadingSuggestions ? (
-                    <p className="px-3 py-2 text-sm text-slate-500">Recherche en cours...</p>
-                  ) : suggestions.length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-slate-500">Aucune suggestion</p>
-                  ) : (
-                    suggestions.map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => choisirSuggestion(item.noms)}
-                        className="w-full rounded-xl px-3 py-2 text-left hover:bg-slate-100"
-                      >
-                        <p className="text-sm font-semibold text-slate-900">{item.noms}</p>
-                        <p className="text-xs text-slate-500">Fiche #{item.num_fiche} • {item.telephone}</p>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+            <UnifiedSearchBar
+              value={recherche}
+              placeholder="Rechercher par nom, fiche, telephone, parcelle, cadastral, acte vente..."
+              hasActiveSearch={hasActiveSearch}
+              onChange={setRecherche}
+              onSubmit={executerRecherche}
+              onClear={annulerRecherche}
+              suggestions={suggestions.map((item): UnifiedSuggestion => ({
+                id: item.id,
+                title: item.noms,
+                subtitle: `Fiche #${item.num_fiche} • ${item.telephone || '-'}`,
+                value: item.noms,
+              }))}
+              showSuggestions={showSuggestions}
+              onShowSuggestionsChange={setShowSuggestions}
+              onSelectSuggestion={(item) => choisirSuggestion(item.value || item.title)}
+              loadingSuggestions={loadingSuggestions}
+              emptySuggestionsText="Aucune suggestion"
+            />
           </div>
 
           <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -1038,6 +1199,17 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
                   </section>
 
                   <div className="flex items-center justify-end gap-2">
+                    {/* Canvas caché pour le QR code — utilisé par imprimerFiche */}
+                    <div ref={qrRef} className="hidden">
+                      <QRCodeCanvas value={selectedSubscriber.num_fiche} size={128} />
+                    </div>
+                    <button
+                      onClick={imprimerFiche}
+                      className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 transition-colors hover:bg-blue-100"
+                    >
+                      <Printer size={16} />
+                      Imprimer la fiche
+                    </button>
                     <button
                       onClick={() => supprimerSouscripteur(selectedSubscriber)}
                       disabled={deleteLoadingId === selectedSubscriber.id}

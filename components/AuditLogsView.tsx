@@ -1,13 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { ListChecks, RefreshCcw } from 'lucide-react'
+import { Eye, EyeOff, ListChecks, RefreshCcw } from 'lucide-react'
 
 type AuditLogItem = {
   id: string
   performer_id: string | null
   performer_email?: string | null
+  target_email?: string | null
   action_type: string
   table_name: string
   record_id: string | null
@@ -25,6 +26,15 @@ type ActivityLogItem = {
   num_fiche: string | null
 }
 
+const ACCESS_ACTION_TYPES = new Set([
+  'USER_ROLE_UPDATED',
+  'USER_STATUS_UPDATED',
+  'USER_PERMISSION_RECOUVREMENT_UPDATED',
+  'USER_PERMISSION_RAPPORTS_UPDATED',
+  'USER_PERMISSION_ECHEANCES_UPDATED',
+  'USER_ACCESS_UPDATED',
+])
+
 function formatDate(input: string | null) {
   if (!input) {
     return '-'
@@ -36,6 +46,22 @@ function formatDate(input: string | null) {
 function summarizeAccessChanges(oldData: Record<string, unknown> | null, newData: Record<string, unknown> | null) {
   if (!oldData || !newData) {
     return 'Détail indisponible'
+  }
+
+  const oldPermission = typeof oldData.permission === 'string' ? oldData.permission : ''
+  const newPermission = typeof newData.permission === 'string' ? newData.permission : ''
+  const permissionName = newPermission || oldPermission
+
+  // Format d'event unitaire: { permission: 'rapports', allowed: boolean }
+  if (permissionName && ('allowed' in oldData || 'allowed' in newData)) {
+    const oldAllowed = oldData.allowed === true
+    const newAllowed = newData.allowed === true
+
+    if (oldAllowed !== newAllowed) {
+      return `${permissionName}: ${oldAllowed ? 'permis' : 'non permis'} -> ${newAllowed ? 'permis' : 'non permis'}`
+    }
+
+    return `${permissionName}: ${newAllowed ? 'permis' : 'non permis'}`
   }
 
   const oldRole = String(oldData.role || '')
@@ -81,6 +107,7 @@ export default function AuditLogsView() {
   const [actionFilter, setActionFilter] = useState('TOUTES')
   const [periodFilter, setPeriodFilter] = useState<'7J' | '30J' | '90J' | 'TOUT'>('30J')
   const [currentPage, setCurrentPage] = useState(1)
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
 
   const getActionFilterLabel = (action: string) => {
     const labels: Record<string, string> = {
@@ -137,7 +164,9 @@ export default function AuditLogsView() {
 
   const availableActionTypes = useMemo(() => {
     const unique = Array.from(new Set(auditLogs.map((row) => row.action_type).filter(Boolean)))
-    return unique.sort((a, b) => a.localeCompare(b, 'fr'))
+    return unique
+      .filter((action) => !ACCESS_ACTION_TYPES.has(action))
+      .sort((a, b) => a.localeCompare(b, 'fr'))
   }, [auditLogs])
 
   const filteredAuditLogs = useMemo(() => {
@@ -157,8 +186,14 @@ export default function AuditLogsView() {
         return false
       }
 
-      if (actionFilter !== 'TOUTES' && row.action_type !== actionFilter) {
-        return false
+      if (actionFilter !== 'TOUTES') {
+        if (actionFilter === 'USER_ACCESS_UPDATED') {
+          if (!ACCESS_ACTION_TYPES.has(row.action_type)) {
+            return false
+          }
+        } else if (row.action_type !== actionFilter) {
+          return false
+        }
       }
 
       if (!keyword) {
@@ -189,6 +224,7 @@ export default function AuditLogsView() {
 
   useEffect(() => {
     setCurrentPage(1)
+    setExpandedRowId(null)
   }, [actionFilter, periodFilter, search])
 
   useEffect(() => {
@@ -271,6 +307,7 @@ export default function AuditLogsView() {
             className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 outline-none focus:border-blue-400"
           >
             <option value="TOUTES">Toutes les actions</option>
+            <option value="USER_ACCESS_UPDATED">Accès utilisateur modifié</option>
             {availableActionTypes.map((action) => (
               <option key={action} value={action}>{getActionFilterLabel(action)}</option>
             ))}
@@ -314,29 +351,65 @@ export default function AuditLogsView() {
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Action</th>
                     <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Acteur</th>
-                    <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Cible</th>
-                    <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Détails</th>
+                    <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-[0.12em] text-slate-500">Voir</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {paginatedAuditLogs.map((row) => (
-                    <tr key={row.id}>
-                      <td className="px-4 py-4 align-top text-xs font-semibold text-slate-700">{formatDate(row.created_at)}</td>
-                      <td className="px-4 py-4 align-top text-xs font-black text-slate-900">{row.action_type}</td>
-                      <td className="px-4 py-4 align-top text-xs text-slate-700">
-                        <p className="font-semibold text-slate-900">{row.performer_email || '-'}</p>
-                        <p className="mt-1 text-[10px] text-slate-500">ID: {row.performer_id || '-'}</p>
-                      </td>
-                      <td className="px-4 py-4 align-top text-xs text-slate-700">{row.record_id || '-'}</td>
-                      <td className="px-4 py-4 align-top text-xs text-slate-700">{summarizeAccessChanges(row.old_data, row.new_data)}</td>
-                    </tr>
-                  ))}
+                  {paginatedAuditLogs.map((row) => {
+                    const isExpanded = expandedRowId === row.id
+
+                    return (
+                      <Fragment key={row.id}>
+                        <tr key={row.id}>
+                          <td className="px-4 py-4 align-top text-xs font-semibold text-slate-700">{formatDate(row.created_at)}</td>
+                          <td className="px-4 py-4 align-top text-xs text-slate-700">
+                            <p className="font-semibold text-slate-900">{row.performer_email || '-'}</p>
+                            <p className="mt-1 text-[10px] text-slate-500">ID: {row.performer_id || '-'}</p>
+                          </td>
+                          <td className="px-4 py-4 align-top text-right">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRowId((prev) => (prev === row.id ? null : row.id))}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                              aria-label={isExpanded ? 'Masquer les détails' : 'Voir les détails'}
+                              title={isExpanded ? 'Masquer les détails' : 'Voir les détails'}
+                            >
+                              {isExpanded ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr key={`${row.id}-details`} className="bg-slate-50/80">
+                            <td colSpan={3} className="px-4 pb-4 pt-1">
+                              <div className="grid gap-3 md:grid-cols-3">
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Action</p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-900">{getActionFilterLabel(row.action_type)}</p>
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Cible</p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-900">{row.target_email || row.record_id || '-'}</p>
+                                  {row.target_email && row.record_id && (
+                                    <p className="mt-1 text-[10px] text-slate-500">ID: {row.record_id}</p>
+                                  )}
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Détails</p>
+                                  <p className="mt-1 text-xs text-slate-700">{summarizeAccessChanges(row.old_data, row.new_data)}</p>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
 
                   {filteredAuditLogs.length === 0 && (
                     <tr>
-                      <td className="px-4 py-8 text-center text-sm font-medium text-slate-500" colSpan={5}>
+                      <td className="px-4 py-8 text-center text-sm font-medium text-slate-500" colSpan={3}>
                         Aucun log d’audit trouvé.
                       </td>
                     </tr>

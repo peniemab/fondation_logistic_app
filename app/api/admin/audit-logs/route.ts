@@ -97,16 +97,17 @@ export async function GET(request: NextRequest) {
     }
 
     const rawAuditLogs = (auditResult.data || []) as AuditLogRow[]
-    const performerIds = Array.from(new Set(rawAuditLogs.map((row) => row.performer_id).filter(Boolean) as string[]))
+    const performerIds = new Set(rawAuditLogs.map((row) => row.performer_id).filter(Boolean) as string[])
+    const targetIds = new Set(rawAuditLogs.map((row) => row.record_id).filter(Boolean) as string[])
 
-    const performerEmailMap = new Map<string, string>()
-    if (performerIds.length > 0) {
+    const userEmailMap = new Map<string, string>()
+    if (performerIds.size > 0 || targetIds.size > 0) {
       const { data: usersData, error: usersError } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 })
 
       if (!usersError) {
         for (const user of usersData.users) {
-          if (performerIds.includes(user.id)) {
-            performerEmailMap.set(user.id, user.email || '')
+          if (performerIds.has(user.id) || targetIds.has(user.id)) {
+            userEmailMap.set(user.id, user.email || '')
           }
         }
       }
@@ -114,7 +115,8 @@ export async function GET(request: NextRequest) {
 
     const auditLogs = rawAuditLogs.map((row) => ({
       ...row,
-      performer_email: row.performer_id ? (performerEmailMap.get(row.performer_id) || null) : null,
+      performer_email: row.performer_id ? (userEmailMap.get(row.performer_id) || null) : null,
+      target_email: row.record_id ? (userEmailMap.get(row.record_id) || null) : null,
     }))
 
     return NextResponse.json({
