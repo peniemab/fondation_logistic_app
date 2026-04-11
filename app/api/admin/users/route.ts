@@ -20,6 +20,22 @@ type AuthUserLike = {
   created_at?: string
 }
 
+type AccessSnapshot = {
+  role: string
+  is_active: boolean
+  permissions: {
+    recouvrement: boolean
+    rapports: boolean
+    echeances: boolean
+  }
+}
+
+type AuditEvent = {
+  action_type: string
+  old_data: Record<string, unknown>
+  new_data: Record<string, unknown>
+}
+
 function getEnvOrThrow(name: string) {
   const value = process.env[name]
   if (!value) {
@@ -46,6 +62,85 @@ function getPermissions(user: AuthUserLike) {
     rapports: permissions?.rapports === true,
     echeances: permissions?.echeances === true,
   }
+}
+
+function buildAccessSnapshot(user: AuthUserLike): AccessSnapshot {
+  return {
+    role: getRole(user) || 'agent',
+    is_active: isActive(user),
+    permissions: getPermissions(user),
+  }
+}
+
+function buildAccessAuditEvents(
+  oldSnapshot: AccessSnapshot,
+  newSnapshot: AccessSnapshot,
+  targetUserEmail: string
+) {
+  const events: AuditEvent[] = []
+
+  if (oldSnapshot.role !== newSnapshot.role) {
+    events.push({
+      action_type: 'USER_ROLE_UPDATED',
+      old_data: {
+        email: targetUserEmail,
+        role: oldSnapshot.role,
+      },
+      new_data: {
+        email: targetUserEmail,
+        role: newSnapshot.role,
+      },
+    })
+  }
+
+  if (oldSnapshot.is_active !== newSnapshot.is_active) {
+    events.push({
+      action_type: 'USER_STATUS_UPDATED',
+      old_data: {
+        email: targetUserEmail,
+        is_active: oldSnapshot.is_active,
+      },
+      new_data: {
+        email: targetUserEmail,
+        is_active: newSnapshot.is_active,
+      },
+    })
+  }
+
+  const permissionKeys = ['recouvrement', 'rapports', 'echeances'] as const
+  permissionKeys.forEach((key) => {
+    if (oldSnapshot.permissions[key] !== newSnapshot.permissions[key]) {
+      events.push({
+        action_type: `USER_PERMISSION_${key.toUpperCase()}_UPDATED`,
+        old_data: {
+          email: targetUserEmail,
+          permission: key,
+          allowed: oldSnapshot.permissions[key],
+        },
+        new_data: {
+          email: targetUserEmail,
+          permission: key,
+          allowed: newSnapshot.permissions[key],
+        },
+      })
+    }
+  })
+
+  if (events.length === 0) {
+    events.push({
+      action_type: 'USER_ACCESS_UPDATED',
+      old_data: {
+        email: targetUserEmail,
+        ...oldSnapshot,
+      },
+      new_data: {
+        email: targetUserEmail,
+        ...newSnapshot,
+      },
+    })
+  }
+
+  return events
 }
 
 async function getRequesterFromBearerToken(request: NextRequest) {
@@ -138,6 +233,7 @@ export async function PATCH(request: NextRequest) {
       return authResult.error
     }
     const requesterId = authResult.requester.id
+    const requesterEmail = authResult.requester.email || 'admin-inconnu'
 
     const body = (await request.json()) as {
       userId?: string
@@ -185,6 +281,9 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: existingError?.message || 'User not found' }, { status: 404 })
     }
 
+    const oldSnapshot = buildAccessSnapshot(existingData.user as AuthUserLike)
+    const targetUserEmail = existingData.user.email || ''
+
     const existingMeta = (existingData.user.user_metadata || {}) as AuthUserMeta
     const nextMeta: AuthUserMeta = {
       ...existingMeta,
@@ -214,6 +313,54 @@ export async function PATCH(request: NextRequest) {
     }
 
     const user = updatedData.user as AuthUserLike
+    const newSnapshot = buildAccessSnapshot(user)
+
+    // Best-effort audit logging so access updates are never blocked by log write issues.
+    try {
+      const auditEvents = buildAccessAuditEvents(oldSnapshot, newSnapshot, targetUserEmail)
+
+      await adminClient.from('audit_logs').insert(
+        auditEvents.map((event) => ({
+          performer_id: requesterId,
+          action_type: event.action_type,
+          table_name: 'auth.users',
+          record_id: userId,
+          old_data: event.old_data,
+          new_data: event.new_data,
+        }))
+      )
+
+      const detailLines: string[] = []
+      if (oldSnapshot.role !== newSnapshot.role) {
+        detailLines.push(`role: ${oldSnapshot.role} -> ${newSnapshot.role}`)
+      }
+      if (oldSnapshot.is_active !== newSnapshot.is_active) {
+        detailLines.push(`statut: ${oldSnapshot.is_active ? 'actif' : 'inactif'} -> ${newSnapshot.is_active ? 'actif' : 'inactif'}`)
+      }
+      if (oldSnapshot.permissions.recouvrement !== newSnapshot.permissions.recouvrement) {
+        detailLines.push(`recouvrement: ${oldSnapshot.permissions.recouvrement ? 'permis' : 'non permis'} -> ${newSnapshot.permissions.recouvrement ? 'permis' : 'non permis'}`)
+      }
+      if (oldSnapshot.permissions.rapports !== newSnapshot.permissions.rapports) {
+        detailLines.push(`rapports: ${oldSnapshot.permissions.rapports ? 'permis' : 'non permis'} -> ${newSnapshot.permissions.rapports ? 'permis' : 'non permis'}`)
+      }
+      if (oldSnapshot.permissions.echeances !== newSnapshot.permissions.echeances) {
+        detailLines.push(`echeances: ${oldSnapshot.permissions.echeances ? 'permis' : 'non permis'} -> ${newSnapshot.permissions.echeances ? 'permis' : 'non permis'}`)
+      }
+
+      const details = detailLines.length > 0
+        ? detailLines.join(' | ')
+        : 'Aucune différence détectée (mise à jour metadata).'
+
+      await adminClient.from('logs_activite').insert({
+        utilisateur: requesterEmail,
+        action: 'Mise à jour accès utilisateur',
+        details: `${targetUserEmail} | ${details}`,
+        num_fiche: null,
+      })
+    } catch (auditError) {
+      console.error('Audit write failed:', auditError)
+    }
+
     return NextResponse.json({
       user: {
         id: user.id,

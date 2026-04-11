@@ -13,6 +13,7 @@ import RecouvrementView from '@/components/RecouvrementView'
 import SubscribersView from '@/components/SubscribersView'
 import TrashView from '@/components/TrashView'
 import ParametresView from '@/components/ParametresView'
+import AuditLogsView from '@/components/AuditLogsView'
 
 const sectionLabels: Record<string, { title: string; subtitle: string }> = {
   hub: {
@@ -213,6 +214,7 @@ export default function LogicielFES() {
         </div>
       )
     }
+    if (activeView === 'audits') return <AuditLogsView />
 
     if (activeView === 'rapports') return <RapportsSynthesesView />
     if (activeView === 'recouvrement') return <RecouvrementView />
