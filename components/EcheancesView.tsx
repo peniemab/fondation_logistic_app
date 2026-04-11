@@ -267,20 +267,20 @@ export default function EcheancesView() {
 						<div className="rounded-2xl bg-white/70 p-3">
 							<p className="text-xs font-black uppercase tracking-wider text-slate-700">Ce que la vue va faire</p>
 							<ul className="mt-2 space-y-1 text-xs text-slate-700">
-								<li>- Je vais afficher les echeances mensuelles reelles par souscripteur.</li>
-								<li>- Je vais classer chaque dossier: payee, partiel, en retard, a venir.</li>
-								<li>- Je vais donner les stats cles: total echeances, encaisse, attendu, retard.</li>
-								<li>- Je vais faciliter les relances WhatsApp sur les dossiers non soldes.</li>
+								<li>- afficher les echeances mensuelles reelles par souscripteur.</li>
+								<li>- classer chaque dossier: payee, partiel, en retard, a venir.</li>
+								<li>- donner les stats cles: total echeances, encaisse, attendu, retard.</li>
+								<li>- faciliter les relances WhatsApp sur les dossiers non soldes.</li>
 							</ul>
 						</div>
 
 						<div className="rounded-2xl bg-white/70 p-3">
 							<p className="text-xs font-black uppercase tracking-wider text-slate-700">Comment elle va fonctionner</p>
 							<ul className="mt-2 space-y-1 text-xs text-slate-700">
-								<li>- Je charge les souscripteurs et les paiements depuis Supabase.</li>
-								<li>- Je calcule automatiquement les montants dus et payes pour le mois selectionne.</li>
-								<li>- Je navigue par mois (precedent, suivant, aujourd'hui) avec filtre par statut.</li>
-								<li>- J'affiche les details utiles: nom, site, montant, badge statut et action de relance.</li>
+								<li>- charge les souscripteurs et les paiements depuis Supabase.</li>
+								<li>- calcule automatiquement les montants dus et payes pour le mois selectionne.</li>
+								<li>- navigue par mois (precedent, suivant, aujourd'hui) avec filtre par statut.</li>
+								<li>- affiche les details utiles: nom, site, montant, badge statut et action de relance.</li>
 							</ul>
 						</div>
 					</div>
