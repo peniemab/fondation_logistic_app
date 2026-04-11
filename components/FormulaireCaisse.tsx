@@ -266,10 +266,12 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
       password: adminPassword,
     });
 
-    const EMAIL_AUTORISE = "coordon@fes.com";
+    const roleFromAppMeta = String(data.user?.app_metadata?.role || '').toLowerCase();
+    const roleFromUserMeta = String(data.user?.user_metadata?.role || '').toLowerCase();
+    const isAdminRole = roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin';
 
-    if (authError || data.user?.email !== EMAIL_AUTORISE) {
-      alert("ACCÈS REFUSÉ : Seul le coordon peut autoriser cette action.");
+    if (authError || !isAdminRole) {
+      alert("ACCÈS REFUSÉ : Seul un utilisateur avec le rôle admin peut autoriser cette action.");
       setLoading(false);
       return;
     }

@@ -3,7 +3,19 @@ import { useState, useEffect } from 'react'
 import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 
-export default function Navigation({ activeView, setActiveView }: { activeView: string; setActiveView: (view: string) => void }) {
+export default function Navigation({
+  activeView,
+  setActiveView,
+  currentUserEmail,
+  currentUserId,
+  isAdmin,
+}: {
+  activeView: string
+  setActiveView: (view: string) => void
+  currentUserEmail: string
+  currentUserId: string
+  isAdmin: boolean
+}) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   // Bloquer le scroll quand le menu est ouvert
@@ -23,7 +35,7 @@ export default function Navigation({ activeView, setActiveView }: { activeView: 
     <>
       {/* Navigation Bar */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 print:hidden shadow-sm">
-        <div className="max-w-[1600px] mx-auto flex justify-between items-center px-4">
+        <div className="mx-auto flex max-w-400 items-center justify-between px-4">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -56,12 +68,15 @@ export default function Navigation({ activeView, setActiveView }: { activeView: 
 
       {/* Sidebar */}
       <div
-        className={`fixed top-[73px] left-0 h-[calc(100vh-73px)] bg-white border-r border-slate-200 shadow-lg z-40 transition-transform duration-300 ease-in-out overflow-y-auto ${
+        className={`fixed left-0 top-18.25 h-[calc(100vh-73px)] overflow-y-auto border-r border-slate-200 bg-white shadow-lg transition-transform duration-300 ease-in-out z-40 ${
           isMenuOpen ? 'translate-x-0' : '-translate-x-full'
         } w-full max-w-[320px]`}
       >
         <Sidebar
           activeView={activeView}
+          currentUserEmail={currentUserEmail}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
           setActiveView={(view: string) => {
             setActiveView(view)
             setIsMenuOpen(false)

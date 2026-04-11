@@ -38,8 +38,11 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-const { data: { user } } = await supabase.auth.getUser()
-const session = !!user 
+  const { data: { user } } = await supabase.auth.getUser()
+  const session = !!user
+  const appActive = user?.app_metadata?.is_active !== false
+  const userActive = user?.user_metadata?.is_active !== false
+  const isActiveUser = appActive && userActive
 
   const isLoginPage = request.nextUrl.pathname.startsWith('/login')
 
@@ -47,7 +50,11 @@ const session = !!user
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (session && isLoginPage) {
+  if (session && !isActiveUser && !isLoginPage) {
+    return NextResponse.redirect(new URL('/login?inactive=1', request.url))
+  }
+
+  if (session && isLoginPage && isActiveUser) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { supabase } from '@/lib/supabase'
-import { Archive, ClipboardList, Clock, FileText, Home, Layers, ListChecks, LogOut, ShieldCheck, Users } from 'lucide-react'
+import { Archive, ClipboardList, Clock, FileText, Home, Layers, ListChecks, LogOut, Settings2, ShieldCheck, UserCircle2, Users } from 'lucide-react'
 
 const handleLogout = async () => {
   const confirmLogout = confirm("Voulez-vous vraiment vous déconnecter ?")
@@ -36,16 +36,11 @@ const menuItems = [
     description: 'Vues des souscripteurs',
     icon: Users,
   },
-  {
-    id: 'corbeille',
-    title: 'Corbeille',
-    description: 'Dossiers supprimes logiquement',
-    icon: Archive,
-  },
+  
   {
     id: 'recouvrement',
     title: 'Recouvrement',
-    description: 'Suivi des encaissements et relances',
+    description: 'Suivi encaissements et relances',
     icon: ShieldCheck,
   },
   {
@@ -72,22 +67,67 @@ const menuItems = [
     description: 'Formulaire et reçu',
     icon: Layers,
   },
+  {
+    id: 'corbeille',
+    title: 'Corbeille',
+    description: 'Dossiers supprimés',
+    icon: Archive,
+  },
 ]
 
 export default function Sidebar({
   activeView,
+  currentUserEmail,
+  currentUserId,
+  isAdmin,
   setActiveView,
 }: {
   activeView: string
+  currentUserEmail: string
+  currentUserId: string
+  isAdmin: boolean
   setActiveView: (view: string) => void
 }) {
+  const visibleMenuItems = menuItems.filter((item) => {
+    if (!isAdmin && item.id === 'audits') {
+      return false
+    }
+
+    return true
+  })
+
+  const finalMenuItems = isAdmin
+    ? [
+      ...visibleMenuItems,
+      {
+        id: 'parametres',
+        title: 'Paramètres',
+        description: 'Gestion des utilisateurs',
+        icon: Settings2,
+      },
+    ]
+    : visibleMenuItems
+
   return (
     <aside className="w-full shrink-0 bg-white flex flex-col h-full">
-      <div className="mb-2">
+      <div className="mb-4 px-6 pt-6">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white">
+              <UserCircle2 size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="mt-1 truncate text-sm font-bold text-slate-900">{currentUserEmail || 'Utilisateur inconnu'}</p>
+              <p className="mt-1 truncate text-[11px] text-slate-500" title={currentUserId || 'ID indisponible'}>
+                ID: {currentUserId || 'indisponible'}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-3 flex-1 overflow-y-auto px-6 pb-6">
-        {menuItems.map((item) => {
+        {finalMenuItems.map((item) => {
           const ItemIcon = item.icon
           const isActive = activeView === item.id
           return (

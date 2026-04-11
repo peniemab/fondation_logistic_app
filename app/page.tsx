@@ -12,6 +12,7 @@ import RapportsSynthesesView from '@/components/RapportsSynthesesView'
 import RecouvrementView from '@/components/RecouvrementView'
 import SubscribersView from '@/components/SubscribersView'
 import TrashView from '@/components/TrashView'
+import ParametresView from '@/components/ParametresView'
 
 const sectionLabels: Record<string, { title: string; subtitle: string }> = {
   hub: {
@@ -42,14 +43,26 @@ const sectionLabels: Record<string, { title: string; subtitle: string }> = {
     title: 'Vérification QR code',
     subtitle: 'Validation du formulaire et du reçu.',
   },
+  parametres: {
+    title: 'Paramètres utilisateurs',
+    subtitle: 'Attribuez les rôles et activez les comptes.',
+  },
 }
 
 export default function LogicielFES() {
-  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification'>('hub');
+  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres'>('hub');
   const [sessionActive, setSessionActive] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState('');
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [isAdminUser, setIsAdminUser] = useState(false);
   const router = useRouter();
+
+  const isUserActive = (user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }) => {
+    const appActive = user.app_metadata?.is_active !== false;
+    const userActive = user.user_metadata?.is_active !== false;
+    return appActive && userActive;
+  };
+
   const handleLogout = useCallback(async (reason: string = '') => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -63,6 +76,10 @@ export default function LogicielFES() {
 
       if (reason === "timeout") {
         alert("Session expirée.");
+      }
+
+      if (reason === 'inactive') {
+        alert('Compte désactivé. Contactez le coordonnateur.');
       }
 
       window.location.replace('/login');
@@ -80,18 +97,25 @@ export default function LogicielFES() {
         window.location.href = '/login';
       } else {
         const sessionUser = sessionData.session.user;
+
+        if (!isUserActive(sessionUser)) {
+          await handleLogout('inactive');
+          return;
+        }
+
         const email = sessionUser.email || '';
         const roleFromAppMeta = String(sessionUser.app_metadata?.role || '').toLowerCase();
         const roleFromUserMeta = String(sessionUser.user_metadata?.role || '').toLowerCase();
-        const isAdmin = email.toLowerCase() === 'coordon@fes.com' || roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin';
+        const isAdmin = roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin';
 
+        setCurrentUserId(sessionUser.id);
         setCurrentUserEmail(email);
         setIsAdminUser(isAdmin);
         setSessionActive(true);
       }
     };
     checkUser();
-  }, [router]);
+  }, [handleLogout, router]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -118,14 +142,44 @@ export default function LogicielFES() {
   if (!sessionActive) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-bold">VÉRIFICATION...</div>;
 
   const renderContent = () => {
+    const blockedViewsForNonAdmin = new Set(['recouvrement', 'rapports', 'echeances'])
+
+    if (!isAdminUser && blockedViewsForNonAdmin.has(activeView)) {
+      return (
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-700">
+          Accès refusé. Cette vue est restreinte. Contactez le coordonnateur pour obtenir l’autorisation.
+        </div>
+      )
+    }
+
     if (activeView === 'militaire') return <FormulaireCaisse type="MILITAIRE" />
     if (activeView === 'civil') return <FormulaireCaisse type="CIVIL" />
     if (activeView === 'admin') return <DashboardAdmin />
     if (activeView === 'echeances') return <EcheancesView />
+    if (activeView === 'audits' && !isAdminUser) {
+      return (
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-700">
+          Accès refusé. Le journal d’audits est réservé aux administrateurs.
+        </div>
+      )
+    }
+
     if (activeView === 'rapports') return <RapportsSynthesesView />
     if (activeView === 'recouvrement') return <RecouvrementView />
     if (activeView === 'hub') return <DashboardHome />
     if (activeView === 'corbeille') return <TrashView isAdmin={isAdminUser} currentUserEmail={currentUserEmail} />
+    if (activeView === 'parametres') {
+      if (!isAdminUser) {
+        return (
+          <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-700">
+            Accès refusé. Cette vue est réservée aux administrateurs.
+          </div>
+        )
+      }
+
+      return <ParametresView />
+    }
+
     if (activeView === 'subscribers') {
       return (
         <SubscribersView
@@ -161,7 +215,13 @@ export default function LogicielFES() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
-      <Navigation setActiveView={setActiveView} activeView={activeView} />
+      <Navigation
+        setActiveView={setActiveView}
+        activeView={activeView}
+        currentUserEmail={currentUserEmail}
+        currentUserId={currentUserId}
+        isAdmin={isAdminUser}
+      />
 
       {/* Main Content */}
       <main className="min-h-[calc(100vh-73px)]">

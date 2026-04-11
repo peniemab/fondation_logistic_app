@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
@@ -10,11 +10,30 @@ export default function LoginPage() {
   const [logoSrc, setLogoSrc] = useState('/FES.jpg')
   const [logoFailed, setLogoFailed] = useState(false)
 
+  const isUserActive = (user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }) => {
+    const appActive = user.app_metadata?.is_active !== false
+    const userActive = user.user_metadata?.is_active !== false
+    return appActive && userActive
+  }
+
+  useEffect(() => {
+    const ensureInactiveUsersAreSignedOut = async () => {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const sessionUser = sessionData.session?.user
+
+      if (sessionUser && !isUserActive(sessionUser)) {
+        await supabase.auth.signOut()
+      }
+    }
+
+    ensureInactiveUsersAreSignedOut()
+  }, [])
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     
-    const { error } = await supabase.auth.signInWithPassword({ 
+    const { data, error } = await supabase.auth.signInWithPassword({ 
   email, 
   password,
 })
@@ -22,6 +41,15 @@ export default function LoginPage() {
     if (error) {
       alert("Erreur : " + error.message)
     } else {
+      const signedInUser = data.user
+
+      if (signedInUser && !isUserActive(signedInUser)) {
+        await supabase.auth.signOut()
+        alert('Ce compte est désactivé. Contactez le coordonnateur.')
+        setLoading(false)
+        return
+      }
+
       // TRÈS IMPORTANT : Force le rechargement pour que le middleware voie les cookies
       window.location.href = '/' 
     }
