@@ -55,6 +55,11 @@ export default function LogicielFES() {
   const [currentUserId, setCurrentUserId] = useState('');
   const [currentUserEmail, setCurrentUserEmail] = useState('');
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [userPermissions, setUserPermissions] = useState({
+    recouvrement: false,
+    rapports: false,
+    echeances: false,
+  });
   const router = useRouter();
 
   const isUserActive = (user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }) => {
@@ -62,6 +67,17 @@ export default function LogicielFES() {
     const userActive = user.user_metadata?.is_active !== false;
     return appActive && userActive;
   };
+
+  const getUserPermissions = (user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }) => {
+    const userMetaPermissions = (user.user_metadata?.permissions as Record<string, unknown> | undefined) || {}
+    const appMetaPermissions = (user.app_metadata?.permissions as Record<string, unknown> | undefined) || {}
+
+    return {
+      recouvrement: userMetaPermissions.recouvrement === true || appMetaPermissions.recouvrement === true,
+      rapports: userMetaPermissions.rapports === true || appMetaPermissions.rapports === true,
+      echeances: userMetaPermissions.echeances === true || appMetaPermissions.echeances === true,
+    }
+  }
 
   const handleLogout = useCallback(async (reason: string = '') => {
     try {
@@ -96,7 +112,8 @@ export default function LogicielFES() {
       if (!sessionData.session) {
         window.location.href = '/login';
       } else {
-        const sessionUser = sessionData.session.user;
+        const { data: userData } = await supabase.auth.getUser();
+        const sessionUser = userData.user || sessionData.session.user;
 
         if (!isUserActive(sessionUser)) {
           await handleLogout('inactive');
@@ -107,10 +124,12 @@ export default function LogicielFES() {
         const roleFromAppMeta = String(sessionUser.app_metadata?.role || '').toLowerCase();
         const roleFromUserMeta = String(sessionUser.user_metadata?.role || '').toLowerCase();
         const isAdmin = roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin';
+        const permissions = getUserPermissions(sessionUser)
 
         setCurrentUserId(sessionUser.id);
         setCurrentUserEmail(email);
         setIsAdminUser(isAdmin);
+        setUserPermissions(permissions);
         setSessionActive(true);
       }
     };
@@ -142,9 +161,15 @@ export default function LogicielFES() {
   if (!sessionActive) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-bold">VÉRIFICATION...</div>;
 
   const renderContent = () => {
-    const blockedViewsForNonAdmin = new Set(['recouvrement', 'rapports', 'echeances'])
+    const requiredPermissionByView: Partial<Record<typeof activeView, keyof typeof userPermissions>> = {
+      recouvrement: 'recouvrement',
+      rapports: 'rapports',
+      echeances: 'echeances',
+    }
 
-    if (!isAdminUser && blockedViewsForNonAdmin.has(activeView)) {
+    const requiredPermission = requiredPermissionByView[activeView]
+
+    if (!isAdminUser && requiredPermission && !userPermissions[requiredPermission]) {
       return (
         <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-700">
           Accès refusé. Cette vue est restreinte. Contactez le coordonnateur pour obtenir l’autorisation.

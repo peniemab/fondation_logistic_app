@@ -4,6 +4,11 @@ import { createClient } from '@supabase/supabase-js'
 type AuthUserMeta = {
   role?: string
   is_active?: boolean
+  permissions?: {
+    recouvrement?: boolean
+    rapports?: boolean
+    echeances?: boolean
+  }
 }
 
 type AuthUserLike = {
@@ -31,6 +36,16 @@ function getRole(user: AuthUserLike) {
 
 function isActive(user: AuthUserLike) {
   return user.user_metadata?.is_active !== false
+}
+
+function getPermissions(user: AuthUserLike) {
+  const permissions = user.user_metadata?.permissions
+
+  return {
+    recouvrement: permissions?.recouvrement === true,
+    rapports: permissions?.rapports === true,
+    echeances: permissions?.echeances === true,
+  }
 }
 
 async function getRequesterFromBearerToken(request: NextRequest) {
@@ -74,6 +89,7 @@ export async function GET(request: NextRequest) {
     if ('error' in authResult) {
       return authResult.error
     }
+    const requesterId = authResult.requester.id
 
     const adminClient = getAdminClient()
     const users: AuthUserLike[] = []
@@ -96,14 +112,17 @@ export async function GET(request: NextRequest) {
       page += 1
     }
 
-    const payload = users.map((user) => ({
-      id: user.id,
-      email: user.email || '',
-      role: getRole(user) || 'agent',
-      is_active: isActive(user),
-      created_at: user.created_at || null,
-      last_sign_in_at: user.last_sign_in_at || null,
-    }))
+    const payload = users
+      .filter((user) => user.id !== requesterId)
+      .map((user) => ({
+        id: user.id,
+        email: user.email || '',
+        role: getRole(user) || 'agent',
+        is_active: isActive(user),
+        permissions: getPermissions(user),
+        created_at: user.created_at || null,
+        last_sign_in_at: user.last_sign_in_at || null,
+      }))
 
     return NextResponse.json({ users: payload })
   } catch (error) {
@@ -118,19 +137,41 @@ export async function PATCH(request: NextRequest) {
     if ('error' in authResult) {
       return authResult.error
     }
+    const requesterId = authResult.requester.id
 
-    const body = (await request.json()) as { userId?: string; role?: string; is_active?: boolean }
+    const body = (await request.json()) as {
+      userId?: string
+      role?: string
+      is_active?: boolean
+      permissions?: {
+        recouvrement?: boolean
+        rapports?: boolean
+        echeances?: boolean
+      }
+    }
     const userId = String(body.userId || '').trim()
 
     if (!userId) {
       return NextResponse.json({ error: 'userId is required' }, { status: 400 })
     }
 
+    if (userId === requesterId) {
+      return NextResponse.json({ error: 'Vous ne pouvez pas modifier votre propre profil admin depuis cette vue.' }, { status: 403 })
+    }
+
     const role = typeof body.role === 'string' ? body.role.trim().toLowerCase() : undefined
     const isActiveValue = typeof body.is_active === 'boolean' ? body.is_active : undefined
+    const rawPermissions = body.permissions
+    const permissionsValue = rawPermissions
+      ? {
+        ...(typeof rawPermissions.recouvrement === 'boolean' ? { recouvrement: rawPermissions.recouvrement } : {}),
+        ...(typeof rawPermissions.rapports === 'boolean' ? { rapports: rawPermissions.rapports } : {}),
+        ...(typeof rawPermissions.echeances === 'boolean' ? { echeances: rawPermissions.echeances } : {}),
+      }
+      : undefined
 
-    if (!role && typeof isActiveValue === 'undefined') {
-      return NextResponse.json({ error: 'role or is_active must be provided' }, { status: 400 })
+    if (!role && typeof isActiveValue === 'undefined' && !permissionsValue) {
+      return NextResponse.json({ error: 'role, is_active or permissions must be provided' }, { status: 400 })
     }
 
     if (role && !['admin', 'agent', 'lecture_seule'].includes(role)) {
@@ -157,6 +198,13 @@ export async function PATCH(request: NextRequest) {
       nextMeta.is_active = isActiveValue
     }
 
+    if (permissionsValue) {
+      nextMeta.permissions = {
+        ...(nextMeta.permissions || {}),
+        ...permissionsValue,
+      }
+    }
+
     const { data: updatedData, error: updateError } = await adminClient.auth.admin.updateUserById(userId, {
       user_metadata: nextMeta,
     })
@@ -172,6 +220,7 @@ export async function PATCH(request: NextRequest) {
         email: user.email || '',
         role: getRole(user) || 'agent',
         is_active: isActive(user),
+        permissions: getPermissions(user),
       },
     })
   } catch (error) {

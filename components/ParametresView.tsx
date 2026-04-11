@@ -2,16 +2,29 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { RefreshCcw, Settings2, Shield, UserCheck, UserX } from 'lucide-react'
+import { MoreVertical, RefreshCcw, Settings2, X } from 'lucide-react'
 
 type UserItem = {
   id: string
   email: string
   role: 'admin' | 'agent' | 'lecture_seule'
   is_active: boolean
+  permissions: {
+    recouvrement: boolean
+    rapports: boolean
+    echeances: boolean
+  }
   created_at: string | null
   last_sign_in_at: string | null
 }
+
+type PermissionKey = keyof UserItem['permissions']
+
+const permissionLabels: Array<{ key: PermissionKey; label: string }> = [
+  { key: 'recouvrement', label: 'Recouvrement' },
+  { key: 'rapports', label: 'Rapports' },
+  { key: 'echeances', label: 'Échéances' },
+]
 
 const roleOptions: Array<{ value: UserItem['role']; label: string }> = [
   { value: 'admin', label: 'Admin' },
@@ -33,6 +46,7 @@ export default function ParametresView() {
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [detailUser, setDetailUser] = useState<UserItem | null>(null)
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
@@ -85,7 +99,7 @@ export default function ParametresView() {
     })
   }, [search, users])
 
-  const updateUser = async (userId: string, payload: Partial<Pick<UserItem, 'role' | 'is_active'>>) => {
+  const updateUser = async (userId: string, payload: Partial<Pick<UserItem, 'role' | 'is_active' | 'permissions'>>) => {
     setBusyUserId(userId)
     setError('')
 
@@ -118,19 +132,47 @@ export default function ParametresView() {
       return
     }
 
+    const applyServerUpdate = (user: UserItem): UserItem => ({
+      ...user,
+      role: result.user?.role || user.role,
+      is_active: typeof result.user?.is_active === 'boolean' ? result.user.is_active : user.is_active,
+      permissions: {
+        recouvrement: typeof result.user?.permissions?.recouvrement === 'boolean' ? result.user.permissions.recouvrement : user.permissions.recouvrement,
+        rapports: typeof result.user?.permissions?.rapports === 'boolean' ? result.user.permissions.rapports : user.permissions.rapports,
+        echeances: typeof result.user?.permissions?.echeances === 'boolean' ? result.user.permissions.echeances : user.permissions.echeances,
+      },
+    })
+
     setUsers((previous) => previous.map((user) => {
       if (user.id !== userId) {
         return user
       }
 
-      return {
-        ...user,
-        role: result.user?.role || user.role,
-        is_active: typeof result.user?.is_active === 'boolean' ? result.user.is_active : user.is_active,
-      }
+      return applyServerUpdate(user)
     }))
 
+    setDetailUser((previous) => {
+      if (!previous || previous.id !== userId) {
+        return previous
+      }
+
+      return applyServerUpdate(previous)
+    })
+
     setBusyUserId(null)
+  }
+
+  const togglePermission = (user: UserItem, permission: PermissionKey) => {
+    updateUser(user.id, {
+      permissions: {
+        ...user.permissions,
+        [permission]: !user.permissions[permission],
+      },
+    })
+  }
+
+  const closeDetailUser = () => {
+    setDetailUser(null)
   }
 
   return (
@@ -202,61 +244,25 @@ export default function ParametresView() {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Utilisateur</th>
-                  <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Rôle</th>
-                  <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Statut</th>
-                  <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Dernière connexion</th>
-                  <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-500">Actions</th>
+                  <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-[0.12em] text-slate-900">Utilisateur</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {filteredUsers.map((user) => {
-                  const rowBusy = busyUserId === user.id
                   return (
                     <tr key={user.id}>
                       <td className="px-4 py-4 align-top">
-                        <p className="text-sm font-bold text-slate-900">{user.email || 'Sans email'}</p>
-                        <p className="mt-1 text-xs text-slate-500">ID: {user.id}</p>
-                        <p className="mt-1 text-xs text-slate-500">Créé le: {formatDate(user.created_at)}</p>
-                      </td>
-                      <td className="px-4 py-4 align-top">
-                        <select
-                          value={user.role}
-                          disabled={rowBusy}
-                          onChange={(event) => updateUser(user.id, { role: event.target.value as UserItem['role'] })}
-                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800"
-                        >
-                          {roleOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-4 align-top">
-                        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${
-                          user.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {user.is_active ? <UserCheck size={14} /> : <UserX size={14} />}
-                          {user.is_active ? 'Actif' : 'Inactif'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-sm font-medium text-slate-700">
-                        {formatDate(user.last_sign_in_at)}
-                      </td>
-                      <td className="px-4 py-4 align-top">
-                        <button
-                          onClick={() => updateUser(user.id, { is_active: !user.is_active })}
-                          disabled={rowBusy}
-                          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-black uppercase tracking-[0.08em] ${
-                            user.is_active
-                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                          } disabled:cursor-not-allowed disabled:opacity-60`}
-                        >
-                          <Shield size={14} />
-                          {user.is_active ? 'Désactiver' : 'Activer'}
-                        </button>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 truncate text-sm font-bold text-slate-900">{user.email || 'Sans email'}</p>
+                          <button
+                            type="button"
+                            onClick={() => setDetailUser(user)}
+                            className="shrink-0 rounded-lg border border-slate-200 p-1.5 text-slate-600 transition-colors hover:bg-slate-100"
+                            aria-label={`Voir les détails de ${user.email || 'cet utilisateur'}`}
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -264,7 +270,7 @@ export default function ParametresView() {
 
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td className="px-4 py-8 text-center text-sm font-medium text-slate-500" colSpan={5}>
+                    <td className="px-4 py-8 text-center text-sm font-medium text-slate-500" colSpan={1}>
                       Aucun utilisateur trouvé.
                     </td>
                   </tr>
@@ -274,6 +280,140 @@ export default function ParametresView() {
           </div>
         )}
       </div>
+
+      {detailUser && (
+        <div className="fixed inset-0 z-50">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/55"
+            onClick={closeDetailUser}
+            aria-label="Fermer les détails"
+          />
+
+          <div className="absolute inset-x-0 bottom-0 w-full max-h-[90vh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-5 shadow-2xl md:inset-auto md:left-1/2 md:top-1/2 md:w-full md:max-w-2xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-3xl md:p-6">
+            <div className="mb-4 flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-500">Détail utilisateur</p>
+                <h3 className="mt-1 break-all text-lg font-black text-slate-900">{detailUser.email || 'Sans email'}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeDetailUser}
+                className="rounded-lg border border-slate-200 p-2 text-slate-600 transition-colors hover:bg-slate-100"
+                aria-label="Fermer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-900">Rôle</p>
+                <select
+                  value={detailUser.role}
+                  disabled={busyUserId === detailUser.id}
+                  onChange={(event) => updateUser(detailUser.id, { role: event.target.value as UserItem['role'] })}
+                  className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
+                >
+                  {roleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-900">Statut</p>
+                <div className="mt-2 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => updateUser(detailUser.id, { is_active: true })}
+                    disabled={busyUserId === detailUser.id}
+                    className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Activer cet utilisateur"
+                  >
+                    <span className={`grid h-4 w-4 place-items-center rounded-full border ${detailUser.is_active ? 'border-emerald-600' : 'border-slate-400'}`}>
+                      <span className={`h-2 w-2 rounded-full ${detailUser.is_active ? 'bg-emerald-600' : 'bg-transparent'}`} />
+                    </span>
+                    Activer
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateUser(detailUser.id, { is_active: false })}
+                    disabled={busyUserId === detailUser.id}
+                    className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label="Désactiver cet utilisateur"
+                  >
+                    <span className={`grid h-4 w-4 place-items-center rounded-full border ${!detailUser.is_active ? 'border-amber-600' : 'border-slate-400'}`}>
+                      <span className={`h-2 w-2 rounded-full ${!detailUser.is_active ? 'bg-amber-600' : 'bg-transparent'}`} />
+                    </span>
+                    Désactiver
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3 sm:col-span-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-900">ID utilisateur</p>
+                <p className="mt-1 break-all text-sm font-semibold text-slate-800">{detailUser.id}</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-900">Créé le</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">{formatDate(detailUser.created_at)}</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-900">Dernière connexion</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">{formatDate(detailUser.last_sign_in_at)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-slate-200 p-3">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-900">Permissions sensibles</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                {permissionLabels.map((permission) => {
+                  const enabled = detailUser.permissions[permission.key]
+
+                  return (
+                    <div key={permission.key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-black text-slate-800">{permission.label}</p>
+
+                      <div className="mt-2 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => updateUser(detailUser.id, { permissions: { ...detailUser.permissions, [permission.key]: true } })}
+                          disabled={busyUserId === detailUser.id || detailUser.role === 'admin'}
+                          className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={`Mettre ${permission.label} en permis`}
+                        >
+                          <span className={`grid h-4 w-4 place-items-center rounded-full border ${enabled ? 'border-emerald-600' : 'border-slate-400'}`}>
+                            <span className={`h-2 w-2 rounded-full ${enabled ? 'bg-emerald-600' : 'bg-transparent'}`} />
+                          </span>
+                          Permis
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => updateUser(detailUser.id, { permissions: { ...detailUser.permissions, [permission.key]: false } })}
+                          disabled={busyUserId === detailUser.id || detailUser.role === 'admin'}
+                          className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={`Mettre ${permission.label} en non permis`}
+                        >
+                          <span className={`grid h-4 w-4 place-items-center rounded-full border ${!enabled ? 'border-amber-600' : 'border-slate-400'}`}>
+                            <span className={`h-2 w-2 rounded-full ${!enabled ? 'bg-amber-600' : 'bg-transparent'}`} />
+                          </span>
+                          Non permis
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {detailUser.role === 'admin' && (
+                <p className="mt-2 text-xs font-semibold text-slate-500">Admin: accès total par défaut.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
