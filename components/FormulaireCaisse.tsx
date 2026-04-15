@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
 import { QRCodeSVG } from 'qrcode.react'
@@ -8,6 +9,7 @@ import StepIdentites from './StepIdentites'
 import StepAdresseFoncier from './StepAdresseFoncier'
 
 interface Paiement {
+  id?: string;
   created_at: string;
   reference_bordereau: string;
   montant: number;
@@ -20,63 +22,42 @@ interface Props {
   onOpenCaisse?: (numFiche: string) => void;
 }
 
+type FormFiche = {
+  id: string | null
+  num_fiche: string
+  noms: string
+  genre: string
+  date_souscription: string
+  num_piece_id: string
+  employeur: string
+  matricule: string
+  fonction: string
+  avenue_num: string
+  quartier: string
+  commune: string
+  email: string
+  telephone: string
+  telephone_2: string
+  num_parcelle: string
+  num_cadastral: string
+  num_acte_vente: string
+  site: string
+  dimension: string
+  nombre_parcelles: number
+  categorie: 'MILITAIRE' | 'CIVIL'
+}
+
 export default function FormulaireCaisse({ type, onOpenCaisse }: Props) {
   const [loading, setLoading] = useState(false)
   const [recherche, setRecherche] = useState('')
   const [paiements, setPaiements] = useState<Paiement[]>([])
-  const [montantSaisie, setMontantSaisie] = useState('')
-  const [sessionActive, setSessionActive] = useState(false);
   const [step, setStep] = useState(1);
-
-  const [refBordereau, setRefBordereau] = useState('')
-  const [datePaiement, setDatePaiement] = useState(new Date().toISOString().split('T')[0]);
 
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [paiementASupprimer, setPaiementASupprimer] = useState<{ id: string, ref: string } | null>(null);
 
-  const tracerAction = async (nomAction: string, description: string, numFiche: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (user) {
-      await supabase.from('logs_activite').insert({
-        utilisateur: user.email,
-        action: nomAction,
-        details: description,
-        num_fiche: numFiche
-      });
-    }
-  };
-  const tenterSuppressionPaiement = (p: any) => {
-    const maintenant = new Date().getTime();
-    const dateCreation = new Date(p.created_at).getTime();
-    const differenceMinutes = (maintenant - dateCreation) / (1000 * 60);
-
-    if (differenceMinutes <= 30) {
-      supprimerDirectement(p.id, p.reference_bordereau);
-    } else {
-      setPaiementASupprimer({ id: p.id, ref: p.reference_bordereau });
-      setShowAdminLogin(true);
-    }
-  };
-
-  const supprimerDirectement = async (id: string, ref: string) => {
-    if (!confirm(`Supprimer l'erreur sur le bordereau ${ref} ?`)) return;
-
-    setLoading(true);
-    const { error } = await supabase.from('paiements').delete().eq('id', id);
-
-    if (!error) {
-      alert("Paiement supprimé.");
-      executerRecherche();
-    } else {
-      alert("Erreur : " + error.message);
-    }
-    setLoading(false);
-  };
-
-  const [fiche, setFiche] = useState({
+  const [fiche, setFiche] = useState<FormFiche>({
     id: null,
     num_fiche: '',
     noms: '',
@@ -93,37 +74,8 @@ export default function FormulaireCaisse({ type, onOpenCaisse }: Props) {
     nombre_parcelles: 1,
     categorie: type
   })
-  const handleLogout = useCallback(async (reason: any = "") => {
-    await supabase.auth.signOut()
-    if (reason === "timeout") {
-      alert("Session expirée.")
-    }
-    window.location.href = '/login'
-  }, [])
-
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFiche({ ...fiche, [e.target.name]: e.target.value })
-  }
-
-  const ajouterPaiement = async () => {
-    if (!montantSaisie || !refBordereau || !datePaiement) return alert("Remplissez tous les champs");
-
-    const { error } = await supabase.from('paiements').insert([{
-      num_fiche: fiche.num_fiche,
-      montant: parseFloat(montantSaisie),
-      reference_bordereau: refBordereau.toUpperCase(),
-      date_paiement: datePaiement,
-      statut: 'VALIDÉ'
-    }])
-
-    if (error) {
-alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur !" : error.message)    } else {
-      alert("Paiement enregistré avec succès");
-      setMontantSaisie('');
-      setRefBordereau('');
-      executerRecherche();
-    }
   }
 
 
@@ -143,7 +95,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
     }))
   }
 
-  useEffect(() => { if (!fiche.id) fetchLastID() }, [type])
+  useEffect(() => { if (!fiche.id) fetchLastID() }, [fiche.id, type])
 
   const dimensionsDisponibles = fiche.site ? Object.keys(TARIFS_OFFICIELS[fiche.site] || {}) : [];
   const baseModalites = (fiche.site && TARIFS_OFFICIELS[fiche.site] && TARIFS_OFFICIELS[fiche.site][fiche.dimension])
@@ -159,20 +111,6 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
 
   const totalVerse = paiements.reduce((acc, curr) => acc + curr.montant, 0) + (fiche.id ? modalites.acompte : 0);
   const resteAPayer = modalites.total - totalVerse;
-
-  const calculerStatut = () => {
-    const debut = new Date(fiche.date_souscription);
-    const aujourdhui = new Date();
-    const diffMois = (aujourdhui.getFullYear() - debut.getFullYear()) * 12 + (aujourdhui.getMonth() - debut.getMonth());
-    const attendu = modalites.acompte + (Math.max(0, diffMois) * modalites.mensualite);
-    const retard = attendu - totalVerse;
-    const moisRetard = modalites.mensualite > 0 ? Math.max(0, Math.floor(retard / modalites.mensualite)) : 0;
-
-    if (retard <= 0) return { label: "À JOUR", color: "bg-green-600" };
-    if (moisRetard >= 3) return { label: "CONTENTIEUX (3+)", color: "bg-black" };
-    if (moisRetard === 2) return { label: "CRITIQUE (2M)", color: "bg-red-600" };
-    return { label: "RELANCE (1M)", color: "bg-orange-500" };
-  };
 
   const executerRecherche = async () => {
     if (!recherche) return;
@@ -233,10 +171,14 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
     if (!fiche.noms || !fiche.site) return alert("Le nom et le site sont obligatoires");
     setLoading(true);
 
-    const { id, num_fiche, ...donneesNettoyées } = fiche;
+    const donneesNettoyées = Object.fromEntries(
+      Object.entries(fiche).filter(([key]) => key !== 'id')
+    ) as Omit<typeof fiche, 'id'>
+
+    const { num_fiche, ...payloadSansNumero } = donneesNettoyées;
 
     const payloadFinal = {
-      ...(fiche.id ? { ...donneesNettoyées, num_fiche } : donneesNettoyées),
+      ...(fiche.id ? { ...payloadSansNumero, num_fiche } : payloadSansNumero),
       categorie: type,
       prix_total: modalites.total,
       acompte_initial: modalites.acompte,
@@ -278,34 +220,19 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
     }
 
     try {
-      if (paiementASupprimer) {
-        const { error } = await supabase
-          .from('paiements')
-          .delete()
-          .eq('id', paiementASupprimer.id);
+      if (confirm("ATTENTION : Suppression DÉFINITIVE du dossier complet et de tous ses paiements ?")) {
+        await supabase.from('paiements').delete().eq('num_fiche', fiche.num_fiche);
+        const { error } = await supabase.from('souscripteurs').delete().eq('id', fiche.id);
 
         if (!error) {
-          alert(`Paiement ${paiementASupprimer.ref} supprimé par le coordon.`);
-          setPaiementASupprimer(null);
-          await executerRecherche();
+          alert("Dossier supprimé avec succès.");
+          window.location.reload();
         } else {
           throw error;
         }
-      } else {
-        if (confirm("ATTENTION : Suppression DÉFINITIVE du dossier complet et de tous ses paiements ?")) {
-          await supabase.from('paiements').delete().eq('num_fiche', fiche.num_fiche);
-          const { error } = await supabase.from('souscripteurs').delete().eq('id', fiche.id);
-
-          if (!error) {
-            alert("Dossier supprimé avec succès.");
-            window.location.reload();
-          } else {
-            throw error;
-          }
-        }
       }
-    } catch (err: any) {
-      alert("Erreur de suppression : " + err.message);
+    } catch (err: unknown) {
+      alert("Erreur de suppression : " + (err instanceof Error ? err.message : 'Erreur inconnue'));
     } finally {
       setLoading(false);
       setShowAdminLogin(false);
@@ -319,9 +246,9 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
 
     <div className="min-h-screen bg-slate-50 flex flex-col justify-start md:py-10 p-2 md:p-8 font-sans text-slate-800">
 
-      <div className="w-full max-w-[1000px] mx-auto mb-4 flex flex-col md:flex-row gap-2 print:hidden">
+      <div className="w-full max-w-250 mx-auto mb-4 flex flex-col md:flex-row gap-2 print:hidden">
         <input
-          className="flex-1 p-4 flex-grow rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.05)] border-none outline-none font-bold text-blue-900 focus:ring-2 ring-blue-500"
+          className="flex-1 p-4 grow rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.05)] border-none outline-none font-bold text-blue-900 focus:ring-2 ring-blue-500"
           placeholder="Rechercher par Nom, N° Fiche, N° Parcelle, Téléphone, Email..."
           value={recherche}
           onChange={(e) => setRecherche(e.target.value)}
@@ -336,7 +263,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
 
       {/* Menu de navigation externe si on n'est pas à l'étape 1 */}
       {step === 2 && (
-        <div className="w-full max-w-[1000px] mx-auto mb-4 flex justify-between items-center bg-white p-4 rounded shadow-sm print:hidden border border-slate-200">
+        <div className="w-full max-w-250 mx-auto mb-4 flex justify-between items-center bg-white p-4 rounded shadow-sm print:hidden border border-slate-200">
           <button onClick={() => setStep(1)} className="bg-blue-300 text-white px-8 py-3 rounded-lg font-black uppercase tracking-wider hover:bg-slate-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
           >Retour</button>
           <span className="text-xs font-black text-slate-400 uppercase">Étape 2 / 3</span>
@@ -344,7 +271,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
       )}
 
       {step >= 3 && (
-        <div className="w-full max-w-[1000px] mx-auto mb-4 flex justify-between items-center bg-white p-4 rounded shadow-sm print:hidden border border-slate-200">
+        <div className="w-full max-w-250 mx-auto mb-4 flex justify-between items-center bg-white p-4 rounded shadow-sm print:hidden border border-slate-200">
           <button onClick={() => setStep(2)} className="bg-blue-300 text-white px-8 py-3 rounded-lg font-black uppercase tracking-wider hover:bg-slate-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
           >Retour</button>
           <span className="text-xs font-black text-slate-400 uppercase">Étape 3 / 3</span>
@@ -352,7 +279,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
       )}
 
       {/* GLOBAL CARD */}
-      <div id="fiche-officielle" className="relative w-full max-w-[1000px] mx-auto bg-white shadow-2xl rounded-sm border-t-[12px] border-blue-900 p-4 md:p-10 print:border-t-0 print:shadow-none overflow-hidden">
+      <div id="fiche-officielle" className="relative w-full max-w-250 mx-auto bg-white shadow-2xl rounded-sm border-t-12 border-blue-900 p-4 md:p-10 print:border-t-0 print:shadow-none overflow-hidden">
 
         <div className="absolute top-0 right-0 overflow-hidden w-32 h-32 pointer-events-none print:block">
           <div className={`
@@ -370,7 +297,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
         <div className="flex flex-col md:flex-row justify-between items-center border-b-2 border-slate-200 pb-4 mb-6 gap-6">
           <div className="flex flex-col md:flex-row items-center gap-5 text-center md:text-left">
             <div className="w-20 h-20 md:w-24 md:h-24 flex items-center justify-center">
-              <img src="/FES.jpg" alt="Logo" className="max-w-full max-h-full object-contain" onError={(e) => e.currentTarget.src = "https://via.placeholder.com/100?text=LOGO"} />
+              <Image src="/FES.jpg" alt="Logo" width={96} height={96} className="max-w-full max-h-full object-contain" />
             </div>
             <div className="space-y-1">
               <h1 className="text-lg md:text-2xl font-black text-green-900 leading-none uppercase">Fondation El-Shaddaï / MBA</h1>
@@ -391,10 +318,6 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
           <StepIdentites
             fiche={fiche}
             handleChange={handleChange}
-            recherche={recherche}
-            setRecherche={setRecherche}
-            executerRecherche={executerRecherche}
-            type={type}
             onNext={() => setStep(2)}
             dimensionsDisponibles={dimensionsDisponibles}
             modalites={modalites}
@@ -427,7 +350,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
               <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 print:hidden">
                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Encaissement</h3>
                 <p className="mt-2 text-xs text-slate-600">
-                  Acompte initial: perçu automatiquement à la création. Les versements manuels et l'historique sont gérés dans la vue Caisse.
+                  Acompte initial: perçu automatiquement à la création. Les versements manuels et l&apos;historique sont gérés dans la vue Caisse.
                 </p>
                 <button
                   type="button"
@@ -446,7 +369,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
                 <div className="border-b border-slate-900 pb-1 mb-2">
                   <span className="text-xs font-bold uppercase">{fiche.noms || "Nom du souscripteur"}</span>
                 </div>
-                <div className="h-20 border border-dashed border-green-900 rounded flex items-center justify-center italic text-xs text-slate-300">"Lu et approuvé"</div>
+                <div className="h-20 border border-dashed border-green-900 rounded flex items-center justify-center italic text-xs text-slate-300">&quot;Lu et approuvé&quot;</div>
               </div>
 
               <div className="flex-1">
@@ -480,7 +403,7 @@ alert(error.code === '23505' ? "Ce bordereau existe déjà pour ce souscripteur 
                 </button>
               )}
 
-              <button onClick={handleSave} disabled={loading} className="w-full md:flex-[2] bg-yellow-700 text-white p-4 font-black uppercase text-xs shadow-xl disabled:bg-slate-300">
+              <button onClick={handleSave} disabled={loading} className="w-full md:flex-2 bg-yellow-700 text-white p-4 font-black uppercase text-xs shadow-xl disabled:bg-slate-300">
                 {loading ? 'CHARGEMENT...' : (fiche.id ? 'Mettre à jour' : 'Enregistrer le dossier')}
               </button>
             </div>

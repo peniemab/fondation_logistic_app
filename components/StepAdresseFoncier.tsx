@@ -2,10 +2,35 @@
 
 import React from 'react'
 
+type FormFicheAdresse = {
+  id: string | null
+  num_fiche: string
+  noms: string
+  genre: string
+  date_souscription: string
+  num_piece_id: string
+  employeur: string
+  matricule: string
+  fonction: string
+  avenue_num: string
+  quartier: string
+  commune: string
+  telephone: string
+  telephone_2: string
+  email: string
+  num_parcelle: string
+  num_cadastral: string
+  num_acte_vente: string
+  site: string
+  dimension: string
+  nombre_parcelles: number
+  categorie: 'MILITAIRE' | 'CIVIL'
+}
+
 interface StepAdresseFoncierProps {
-  fiche: any;
+  fiche: FormFicheAdresse;
   handleChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
-  setFiche: (fiche: any) => void;
+  setFiche: React.Dispatch<React.SetStateAction<FormFicheAdresse>>;
   onNext: () => void;
   onPrev: () => void;
 }

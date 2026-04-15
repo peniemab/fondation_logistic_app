@@ -4,7 +4,7 @@ import type { ComponentType } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Archive, ClipboardList, Clock, FileText, HandCoins, Home, Layers, ListChecks, LogOut, Settings2, ShieldCheck, UserCircle2, Users } from 'lucide-react'
 
-type ActiveView = 'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres' | 'caisse'
+type ActiveView = 'hub' | 'militaire' | 'civil' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres' | 'caisse'
 
 type MenuItem = {
   id: Exclude<ActiveView, 'parametres'>

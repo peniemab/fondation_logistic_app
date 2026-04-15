@@ -9,6 +9,7 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	Clock,
+	type LucideIcon,
 	MessageCircle,
 	Wrench,
 } from 'lucide-react'
@@ -43,7 +44,6 @@ interface EcheanceItem {
 	retardArgent: number
 }
 
-const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
 const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999)
 const addMonths = (date: Date, delta: number) => new Date(date.getFullYear(), date.getMonth() + delta, 1)
 
@@ -151,7 +151,6 @@ export default function EcheancesView() {
 
 	const echeances = useMemo(() => {
 		const result: EcheanceItem[] = []
-		const debut = startOfMonth(moisCourant)
 		const fin = endOfMonth(moisCourant)
 		const now = new Date()
 
@@ -248,7 +247,7 @@ export default function EcheancesView() {
 						className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50"
 						onClick={() => setMoisCourant(new Date())}
 					>
-						Aujourd'hui
+						Aujourd&apos;hui
 					</button>
 				</div>
 			</div>
@@ -279,7 +278,7 @@ export default function EcheancesView() {
 							<ul className="mt-2 space-y-1 text-xs text-slate-700">
 								<li>- charge les souscripteurs et les paiements depuis Supabase.</li>
 								<li>- calcule automatiquement les montants dus et payes pour le mois selectionne.</li>
-								<li>- navigue par mois (precedent, suivant, aujourd'hui) avec filtre par statut.</li>
+								<li>- navigue par mois (precedent, suivant, aujourd&apos;hui) avec filtre par statut.</li>
 								<li>- affiche les details utiles: nom, site, montant, badge statut et action de relance.</li>
 							</ul>
 						</div>
@@ -390,7 +389,7 @@ export default function EcheancesView() {
 }
 
 function EcheanceIcon({ statut }: { statut: StatutEcheance }) {
-	const map: Record<StatutEcheance, { icon: any; className: string }> = {
+	const map: Record<StatutEcheance, { icon: LucideIcon; className: string }> = {
 		payee: { icon: CheckCircle2, className: 'text-emerald-500' },
 		partiel: { icon: Clock, className: 'text-orange-500' },
 		retard: { icon: AlertTriangle, className: 'text-red-600' },

@@ -56,9 +56,7 @@ export default function ParametresView() {
     const token = sessionData.session?.access_token
 
     if (!token) {
-      setError('Session invalide. Reconnectez-vous.')
-      setLoading(false)
-      return
+      throw new Error('Session invalide. Reconnectez-vous.')
     }
 
     const response = await fetch('/api/admin/users', {
@@ -71,18 +69,61 @@ export default function ParametresView() {
     const result = await response.json()
 
     if (!response.ok) {
-      setError(result.error || 'Impossible de charger les utilisateurs.')
-      setLoading(false)
-      return
+      throw new Error(result.error || 'Impossible de charger les utilisateurs.')
     }
 
-    setUsers(result.users || [])
-    setLoading(false)
+    return result.users || []
   }, [])
 
   useEffect(() => {
-    fetchUsers()
+    let isMounted = true
+
+    const loadUsers = async () => {
+      setLoading(true)
+      setError('')
+
+      try {
+        const nextUsers = await fetchUsers()
+        if (!isMounted) {
+          return
+        }
+
+        setUsers(nextUsers)
+      } catch (caughtError) {
+        if (!isMounted) {
+          return
+        }
+
+        const message = caughtError instanceof Error ? caughtError.message : 'Impossible de charger les utilisateurs.'
+        setError(message)
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadUsers()
+
+    return () => {
+      isMounted = false
+    }
   }, [fetchUsers])
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      const nextUsers = await fetchUsers()
+      setUsers(nextUsers)
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : 'Impossible de charger les utilisateurs.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredUsers = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -161,16 +202,6 @@ export default function ParametresView() {
 
     setBusyUserId(null)
   }
-
-  const togglePermission = (user: UserItem, permission: PermissionKey) => {
-    updateUser(user.id, {
-      permissions: {
-        ...user.permissions,
-        [permission]: !user.permissions[permission],
-      },
-    })
-  }
-
   const closeDetailUser = () => {
     setDetailUser(null)
   }
@@ -191,7 +222,7 @@ export default function ParametresView() {
           </div>
 
           <button
-            onClick={fetchUsers}
+            onClick={handleRefresh}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             <RefreshCcw size={16} />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
 import { Users, Plus, ChevronDown, X, UserPlus, FileDown, Eye, Trash2, Printer } from 'lucide-react'
@@ -44,6 +44,14 @@ interface SouscripteurRetard extends Souscripteur {
   paiements?: Paiement[]
 }
 
+type QueryFilterBuilder = {
+  is?: (column: string, value: null) => QueryFilterBuilder
+  eq: (column: string, value: string) => QueryFilterBuilder
+  gte: (column: string, value: string) => QueryFilterBuilder
+  lte: (column: string, value: string) => QueryFilterBuilder
+  or: (filters: string) => QueryFilterBuilder
+}
+
 type AddSubscriberType = 'MILITAIRE' | 'CIVIL'
 
 interface SubscribersViewProps {
@@ -53,13 +61,14 @@ interface SubscribersViewProps {
   onOpenTrash?: () => void
 }
 
-export default function SubscribersView({ onAddSubscriber, isAdmin = false, currentUserEmail = '', onOpenTrash }: SubscribersViewProps) {
+export default function SubscribersView({ onAddSubscriber, isAdmin = false, currentUserEmail = '' }: SubscribersViewProps) {
   const PAGE_SIZE = 100
   const SUGGESTIONS_LIMIT = 8
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [subscribers, setSubscribers] = useState<Souscripteur[]>([])
   const [totalCount, setTotalCount] = useState(0)
+  const [trashCount, setTrashCount] = useState(0)
   const [filteredCount, setFilteredCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [recherche, setRecherche] = useState('')
@@ -88,7 +97,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE))
   const hasActiveSearch = rechercheAppliquee.trim() !== ''
 
-  const buildRpcBaseParams = (termOverride?: string) => ({
+  const buildRpcBaseParams = useCallback((termOverride?: string) => ({
     p_term: (termOverride ?? rechercheAppliquee).trim() || null,
     p_site: filtreSite,
     p_categorie: filtreCategorie,
@@ -96,7 +105,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
     p_date_debut: dateDebut || null,
     p_date_fin: dateFin || null,
     p_retard: filtreRetard,
-  })
+  }), [dateDebut, dateFin, filtreCategorie, filtreDimension, filtreRetard, filtreSite, rechercheAppliquee])
 
   const calculerMoisRetardMetier = (subscriber: SouscripteurRetard) => {
     const debut = new Date(subscriber.date_souscription)
@@ -116,8 +125,8 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
     return Math.max(0, moisEcoules - nbMoisCouverts)
   }
 
-  const appliquerFiltresServeur = <T,>(query: T, termOverride?: string) => {
-    let q: any = query
+  const appliquerFiltresServeur = useCallback(<T,>(query: T, termOverride?: string) => {
+    let q = query as unknown as QueryFilterBuilder
 
     if (typeof q?.is === 'function') {
       q = q.is('deleted_at', null)
@@ -165,18 +174,24 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
       q = q.or(orFilters.join(','))
     }
 
-    return q
-  }
+    return q as unknown as T
+  }, [dateDebut, dateFin, filtreCategorie, filtreDimension, filtreSite, rechercheAppliquee])
 
   useEffect(() => {
     const fetchTotalCount = async () => {
       try {
-        const { count, error } = await supabase
-          .from('souscripteurs')
-          .select('*', { count: 'exact', head: true })
-          .is('deleted_at', null)
+        const [activeResult, trashResult] = await Promise.all([
+          supabase
+            .from('souscripteurs')
+            .select('*', { count: 'exact', head: true })
+            .is('deleted_at', null),
+          supabase
+            .from('souscripteurs')
+            .select('*', { count: 'exact', head: true })
+            .not('deleted_at', 'is', null),
+        ])
 
-        if (error) {
+        if (activeResult.error) {
           // Fallback si la colonne deleted_at n'existe pas encore en base.
           const fallback = await supabase
             .from('souscripteurs')
@@ -187,10 +202,12 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
           }
 
           setTotalCount(fallback.count || 0)
+          setTrashCount(0)
           return
         }
 
-        setTotalCount(count || 0)
+        setTotalCount(activeResult.count || 0)
+        setTrashCount(trashResult.error ? 0 : (trashResult.count || 0))
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Erreur chargement total global')
       }
@@ -222,7 +239,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
 
         setSubscribers((rowsRpc.data as Souscripteur[]) || [])
         setFilteredCount(Number(countRpc.data || 0))
-      } catch (err: unknown) {
+      } catch {
         // Fallback si les RPC ne sont pas encore deployees.
         try {
           if (filtreRetard === null) {
@@ -291,7 +308,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
     }
 
     fetchSubscribers()
-  }, [currentPage, filtreSite, filtreCategorie, filtreDimension, filtreRetard, rechercheAppliquee, dateDebut, dateFin, refreshKey])
+  }, [appliquerFiltresServeur, buildRpcBaseParams, currentPage, dateDebut, dateFin, filtreCategorie, filtreDimension, filtreRetard, filtreSite, refreshKey, rechercheAppliquee])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -395,7 +412,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
     return () => {
       clearTimeout(timer)
     }
-  }, [recherche, filtreSite, filtreCategorie, filtreDimension, filtreRetard, dateDebut, dateFin])
+  }, [appliquerFiltresServeur, buildRpcBaseParams, dateDebut, dateFin, filtreCategorie, filtreDimension, filtreRetard, filtreSite, recherche])
 
   const executerRecherche = async () => {
     setRechercheAppliquee(recherche)
@@ -915,6 +932,8 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
     }
   }
 
+  const totalBaseCount = totalCount + trashCount
+
   return (
     <div className="p-1">
       <div className="mb-8 max-w-4xl">
@@ -928,7 +947,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
               </div>
               <p className="text-3xl font-black text-slate-900">{loading ? '...' : filteredCount}</p>
               {!loading && (
-                <p className="text-xs text-slate-500">Total global: {totalCount}</p>
+                <p className="text-xs text-slate-500">Actifs: {totalCount} · Corbeille: {trashCount} · Base: {totalBaseCount}</p>
               )}
         </div>
       </div>
@@ -1004,7 +1023,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
 
               <select
                 value={filtreCategorie}
-                onChange={(e) => setFiltreCategorie(e.target.value as any)}
+                onChange={(e) => setFiltreCategorie(e.target.value as typeof filtreCategorie)}
                 className="w-full min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 ring-blue-900/5 focus:border-blue-300 md:w-auto"
               >
                 <option value="TOUS">Catégories</option>
@@ -1014,7 +1033,7 @@ export default function SubscribersView({ onAddSubscriber, isAdmin = false, curr
 
               <select
                 value={filtreDimension}
-                onChange={(e) => setFiltreDimension(e.target.value as any)}
+                onChange={(e) => setFiltreDimension(e.target.value as typeof filtreDimension)}
                 className="w-full min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 ring-blue-900/5 focus:border-blue-300 md:w-auto"
               >
                 <option value="TOUS">Dimensions</option>

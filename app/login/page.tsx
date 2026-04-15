@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -70,9 +71,11 @@ export default function LoginPage() {
         <div className="border-b border-slate-200 bg-blue-900 px-8 py-6 text-white">
           <div className="mx-auto mb-3 grid h-24 w-24 place-items-center overflow-hidden rounded-2xl p-2">
             {!logoFailed ? (
-              <img
+              <Image
                 src={logoSrc}
                 alt="Logo Fondation"
+                width={80}
+                height={80}
                 className="h-20 w-20 rounded-xl object-cover"
                 onError={() => {
                   if (logoSrc === '/FES.jpg') {

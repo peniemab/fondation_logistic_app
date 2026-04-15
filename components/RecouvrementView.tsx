@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
 import { Eye, FileDown, Users, X } from 'lucide-react'
@@ -23,6 +23,14 @@ interface RecouvrementRow {
 interface Paiement {
   montant: number
   date_paiement: string
+}
+
+type QueryFilterBuilder = {
+  is?: (column: string, value: null) => QueryFilterBuilder
+  eq: (column: string, value: string) => QueryFilterBuilder
+  gte: (column: string, value: string) => QueryFilterBuilder
+  lte: (column: string, value: string) => QueryFilterBuilder
+  or: (filters: string) => QueryFilterBuilder
 }
 
 interface RecouvrementDetail {
@@ -55,6 +63,7 @@ export default function RecouvrementView() {
 
   const [rows, setRows] = useState<RecouvrementRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
+  const [trashCount, setTrashCount] = useState(0)
   const [filteredCount, setFilteredCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -80,7 +89,7 @@ export default function RecouvrementView() {
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE))
   const hasActiveSearch = rechercheAppliquee.trim() !== ''
 
-  const buildRpcBaseParams = (termOverride?: string) => ({
+  const buildRpcBaseParams = useCallback((termOverride?: string) => ({
     p_term: (termOverride ?? rechercheAppliquee).trim() || null,
     p_site: filtreSite,
     p_categorie: filtreCategorie,
@@ -88,7 +97,7 @@ export default function RecouvrementView() {
     p_date_debut: dateDebut || null,
     p_date_fin: dateFin || null,
     p_retard: filtreRetard,
-  })
+  }), [dateDebut, dateFin, filtreCategorie, filtreDimension, filtreRetard, filtreSite, rechercheAppliquee])
 
   const calculerMoisRetardMetier = (subscriber: {
     date_souscription: string
@@ -113,8 +122,8 @@ export default function RecouvrementView() {
     return Math.max(0, moisEcoules - nbMoisCouverts)
   }
 
-  const appliquerFiltresServeur = <T,>(query: T, termOverride?: string) => {
-    let q: any = query
+  const appliquerFiltresServeur = useCallback(<T,>(query: T, termOverride?: string) => {
+    let q = query as unknown as QueryFilterBuilder
 
     if (typeof q?.is === 'function') q = q.is('deleted_at', null)
 
@@ -146,8 +155,8 @@ export default function RecouvrementView() {
       q = q.or(orFilters.join(','))
     }
 
-    return q
-  }
+    return q as unknown as T
+  }, [dateDebut, dateFin, filtreCategorie, filtreDimension, filtreSite, rechercheAppliquee])
 
   const formatDateFr = (value?: string | null) => {
     if (!value) return '-'
@@ -216,9 +225,15 @@ export default function RecouvrementView() {
   useEffect(() => {
     const fetchTotalCount = async () => {
       try {
-        const { count, error } = await supabase.from('souscripteurs').select('*', { count: 'exact', head: true }).is('deleted_at', null)
-        if (error) throw error
-        setTotalCount(count || 0)
+        const [activeResult, trashResult] = await Promise.all([
+          supabase.from('souscripteurs').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+          supabase.from('souscripteurs').select('*', { count: 'exact', head: true }).not('deleted_at', 'is', null),
+        ])
+
+        if (activeResult.error) throw activeResult.error
+
+        setTotalCount(activeResult.count || 0)
+        setTrashCount(trashResult.error ? 0 : (trashResult.count || 0))
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Erreur inconnue')
       }
@@ -226,6 +241,8 @@ export default function RecouvrementView() {
 
     fetchTotalCount()
   }, [])
+
+  const totalBaseCount = totalCount + trashCount
 
   useEffect(() => {
     const fetchRows = async () => {
@@ -250,7 +267,7 @@ export default function RecouvrementView() {
 
         setRows((rowsRpc.data as RecouvrementRow[]) || [])
         setFilteredCount(Number(countRpc.data || 0))
-      } catch (err: unknown) {
+      } catch {
         // Fallback de securite si les RPC ne sont pas encore deployees.
         try {
           if (filtreRetard === null) {
@@ -316,7 +333,7 @@ export default function RecouvrementView() {
     }
 
     fetchRows()
-  }, [currentPage, filtreSite, filtreCategorie, filtreDimension, filtreRetard, rechercheAppliquee, dateDebut, dateFin])
+  }, [appliquerFiltresServeur, buildRpcBaseParams, currentPage, dateDebut, dateFin, filtreCategorie, filtreDimension, filtreRetard, filtreSite, rechercheAppliquee])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -376,7 +393,7 @@ export default function RecouvrementView() {
     return () => {
       clearTimeout(timer)
     }
-  }, [recherche, filtreSite, filtreCategorie, filtreDimension, filtreRetard, dateDebut, dateFin])
+  }, [appliquerFiltresServeur, buildRpcBaseParams, dateDebut, dateFin, filtreCategorie, filtreDimension, filtreRetard, filtreSite, recherche])
 
   const executerRecherche = () => {
     setRechercheAppliquee(recherche)
@@ -663,8 +680,6 @@ export default function RecouvrementView() {
         dateDebut || dateFin
           ? `${dateDebut ? formatDateFr(dateDebut) : '-'} au ${dateFin ? formatDateFr(dateFin) : '-'}`
           : 'Toutes'
-      const rechercheLabel = rechercheAppliquee.trim() || 'Aucune'
-
       if (logoDataUrl) {
         doc.addImage(logoDataUrl, 'JPEG', pageWidth / 2 - 15, 24, 30, 30)
       }
@@ -750,7 +765,7 @@ export default function RecouvrementView() {
             <p className="text-xl font-semibold text-slate-900">Dossiers recouvrement</p>
           </div>
           <p className="text-3xl font-black text-slate-900">{loading ? '...' : filteredCount}</p>
-          {!loading && <p className="text-xs text-slate-500">Total global: {totalCount}</p>}
+          {!loading && <p className="text-xs text-slate-500">Actifs: {totalCount} · Corbeille: {trashCount} · Base: {totalBaseCount}</p>}
         </div>
       </div>
 

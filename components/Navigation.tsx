@@ -1,9 +1,10 @@
 'use client'
+import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 
-type ActiveView = 'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres' | 'caisse'
+type ActiveView = 'hub' | 'militaire' | 'civil' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres' | 'caisse'
 
 export default function Navigation({
   activeView,
@@ -51,7 +52,7 @@ export default function Navigation({
               onClick={() => setActiveView('hub')}
               className="flex items-center gap-3 p-5 cursor-pointer group"
             >
-              <img src="/FES.jpg" alt="Logo Fondation El-Shaddaï" className="w-8 h-8 rounded-full shadow-sm" />
+              <Image src="/FES.jpg" alt="Logo Fondation El-Shaddaï" width={32} height={32} className="w-8 h-8 rounded-full shadow-sm" />
               <span className="font-black text-blue-900 text-sm tracking-tighter group-hover:text-blue-600 transition-colors">
                 Fondation EL-Shaddai / MBA
               </span>

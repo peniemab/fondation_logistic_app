@@ -27,7 +27,7 @@ export default function DashboardHome() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [subscriberCount, setSubscriberCount] = useState(0)
-  const [paymentCount, setPaymentCount] = useState(0)
+  const [trashCount, setTrashCount] = useState(0)
   const [totalContracts, setTotalContracts] = useState(0)
   const [totalCollected, setTotalCollected] = useState(0)
   const [revenueBySite, setRevenueBySite] = useState<SiteRevenue[]>([])
@@ -38,17 +38,22 @@ export default function DashboardHome() {
       setError(null)
 
       try {
-        // Obtenir le nombre total exact
-        const { count: totalCount, error: countError } = await supabase
-          .from('souscripteurs')
-          .select('*', { count: 'exact', head: true })
-          .is('deleted_at', null)
+        const [activeResult, trashResult] = await Promise.all([
+          supabase
+            .from('souscripteurs')
+            .select('*', { count: 'exact', head: true })
+            .is('deleted_at', null),
+          supabase
+            .from('souscripteurs')
+            .select('*', { count: 'exact', head: true })
+            .not('deleted_at', 'is', null),
+        ])
 
-        if (countError) {
-          throw countError
+        if (activeResult.error) {
+          throw activeResult.error
         }
 
-        const totalRecords = totalCount || 0
+        const totalRecords = activeResult.count || 0
         let toutesLesDonnees: SouscripteurRow[] = []
         const taillePaquet = 1000
 
@@ -72,7 +77,6 @@ export default function DashboardHome() {
 
         const siteMap = new Map<string, { totalCollected: number; count: number }>()
         let subscriberTotal = 0
-        let paymentTotal = 0
         let contractTotal = 0
         let collectedTotal = 0
 
@@ -84,7 +88,6 @@ export default function DashboardHome() {
           const rowCollected = acompteInitial + paiementsTotal
 
           subscriberTotal += 1
-          paymentTotal += paiements.length
           contractTotal += prixTotal
           collectedTotal += rowCollected
 
@@ -106,7 +109,7 @@ export default function DashboardHome() {
         siteList.sort((a, b) => b.totalCollected - a.totalCollected)
 
         setSubscriberCount(subscriberTotal)
-        setPaymentCount(paymentTotal)
+        setTrashCount(trashResult.error ? 0 : (trashResult.count || 0))
         setTotalContracts(contractTotal)
         setTotalCollected(collectedTotal)
         setRevenueBySite(siteList)
@@ -122,12 +125,13 @@ export default function DashboardHome() {
 
   const collectedPercent = totalContracts > 0 ? (totalCollected / totalContracts) * 100 : 0
   const remainingPercent = totalContracts > 0 ? Math.max(0, 100 - collectedPercent) : 0
+  const totalSubscriberBase = subscriberCount + trashCount
 
   const summaryCards = [
     {
-      label: 'Souscripteurs',
+      label: 'Souscripteurs actifs',
       value: subscriberCount,
-      description: 'Dossiers enregistrés',
+      description: `${totalSubscriberBase} au total · ${trashCount} en corbeille`,
       icon: Users2,
     },
     {

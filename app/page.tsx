@@ -1,11 +1,9 @@
 'use client'
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 
 import Navigation from '@/components/Navigation'
 import FormulaireCaisse from '@/components/FormulaireCaisse'
-import DashboardAdmin from '@/components/DashboardAdmin'
 import DashboardHome from '@/components/DashboardHome'
 import EcheancesView from '@/components/EcheancesView'
 import RapportsSynthesesView from '@/components/RapportsSynthesesView'
@@ -56,7 +54,7 @@ const sectionLabels: Record<string, { title: string; subtitle: string }> = {
 }
 
 export default function LogicielFES() {
-  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'admin' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres' | 'caisse'>('hub');
+  const [activeView, setActiveView] = useState<'hub' | 'militaire' | 'civil' | 'subscribers' | 'corbeille' | 'echeances' | 'rapports' | 'audits' | 'recouvrement' | 'verification' | 'parametres' | 'caisse'>('hub');
   const [caisseInitialQuery, setCaisseInitialQuery] = useState('')
   const [sessionActive, setSessionActive] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
@@ -67,7 +65,6 @@ export default function LogicielFES() {
     rapports: false,
     echeances: false,
   });
-  const router = useRouter();
 
   const isUserActive = (user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }) => {
     const appActive = user.app_metadata?.is_active !== false;
@@ -113,11 +110,11 @@ export default function LogicielFES() {
     }
   }, []);
 
-  const applyUserState = useCallback(async () => {
+  const resolveUserState = useCallback(async () => {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
       window.location.href = '/login'
-      return
+      return null
     }
 
     const { data: userData } = await supabase.auth.getUser()
@@ -125,7 +122,7 @@ export default function LogicielFES() {
 
     if (!isUserActive(sessionUser)) {
       await handleLogout('inactive')
-      return
+      return null
     }
 
     const email = sessionUser.email || ''
@@ -134,30 +131,67 @@ export default function LogicielFES() {
     const isAdmin = roleFromAppMeta === 'admin' || roleFromUserMeta === 'admin'
     const permissions = getUserPermissions(sessionUser)
 
-    setCurrentUserId(sessionUser.id)
-    setCurrentUserEmail(email)
-    setIsAdminUser(isAdmin)
-    setUserPermissions(permissions)
-    setSessionActive(true)
+    return {
+      currentUserId: sessionUser.id,
+      currentUserEmail: email,
+      isAdminUser: isAdmin,
+      userPermissions: permissions,
+    }
   }, [handleLogout])
 
+  const applyResolvedUserState = useCallback((nextState: {
+    currentUserId: string
+    currentUserEmail: string
+    isAdminUser: boolean
+    userPermissions: {
+      recouvrement: boolean
+      rapports: boolean
+      echeances: boolean
+    }
+  }) => {
+    setCurrentUserId(nextState.currentUserId)
+    setCurrentUserEmail(nextState.currentUserEmail)
+    setIsAdminUser(nextState.isAdminUser)
+    setUserPermissions(nextState.userPermissions)
+    setSessionActive(true)
+  }, [])
+
   useEffect(() => {
+    let isMounted = true
+
     const checkUser = async () => {
-      await applyUserState()
-    };
-    checkUser();
-  }, [applyUserState, router]);
+      const nextState = await resolveUserState()
+      if (!isMounted || !nextState) {
+        return
+      }
+
+      applyResolvedUserState(nextState)
+    }
+
+    void checkUser()
+
+    return () => {
+      isMounted = false
+    }
+  }, [applyResolvedUserState, resolveUserState]);
 
   useEffect(() => {
     const handleWindowFocus = () => {
-      applyUserState()
+      void (async () => {
+        const nextState = await resolveUserState()
+        if (!nextState) {
+          return
+        }
+
+        applyResolvedUserState(nextState)
+      })()
     }
 
     window.addEventListener('focus', handleWindowFocus)
     return () => {
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [applyUserState])
+  }, [applyResolvedUserState, resolveUserState])
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -187,8 +221,15 @@ export default function LogicielFES() {
       return
     }
 
-    applyUserState()
-  }, [activeView, applyUserState])
+    void (async () => {
+      const nextState = await resolveUserState()
+      if (!nextState) {
+        return
+      }
+
+      applyResolvedUserState(nextState)
+    })()
+  }, [activeView, applyResolvedUserState, resolveUserState])
 
   if (!sessionActive) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-bold">VÉRIFICATION...</div>;
 
@@ -231,7 +272,6 @@ export default function LogicielFES() {
         />
       )
     }
-    if (activeView === 'admin') return <DashboardAdmin />
     if (activeView === 'echeances') return <EcheancesView />
     if (activeView === 'audits' && !isAdminUser) {
       return (

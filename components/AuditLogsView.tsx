@@ -106,6 +106,7 @@ export default function AuditLogsView() {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('TOUTES')
   const [periodFilter, setPeriodFilter] = useState<'7J' | '30J' | '90J' | 'TOUT'>('30J')
+  const [referenceTime, setReferenceTime] = useState(() => Date.now())
   const [currentPage, setCurrentPage] = useState(1)
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
 
@@ -133,9 +134,7 @@ export default function AuditLogsView() {
     const token = sessionData.session?.access_token
 
     if (!token) {
-      setError('Session invalide. Reconnectez-vous.')
-      setLoading(false)
-      return
+      throw new Error('Session invalide. Reconnectez-vous.')
     }
 
     const response = await fetch('/api/admin/audit-logs', {
@@ -148,19 +147,68 @@ export default function AuditLogsView() {
     const result = await response.json()
 
     if (!response.ok) {
-      setError(result.error || 'Impossible de charger les journaux.')
-      setLoading(false)
-      return
+      throw new Error(result.error || 'Impossible de charger les journaux.')
     }
 
-    setAuditLogs(result.auditLogs || [])
-    setActivityLogs(result.activityLogs || [])
-    setLoading(false)
+    return {
+      auditLogs: result.auditLogs || [],
+      activityLogs: result.activityLogs || [],
+    }
   }, [])
 
   useEffect(() => {
-    fetchLogs()
+    let isMounted = true
+
+    const loadLogs = async () => {
+      setLoading(true)
+      setError('')
+
+      try {
+        const nextLogs = await fetchLogs()
+        if (!isMounted) {
+          return
+        }
+
+        setAuditLogs(nextLogs.auditLogs)
+        setActivityLogs(nextLogs.activityLogs)
+        setReferenceTime(Date.now())
+      } catch (caughtError) {
+        if (!isMounted) {
+          return
+        }
+
+        const message = caughtError instanceof Error ? caughtError.message : 'Impossible de charger les journaux.'
+        setError(message)
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadLogs()
+
+    return () => {
+      isMounted = false
+    }
   }, [fetchLogs])
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      const nextLogs = await fetchLogs()
+      setAuditLogs(nextLogs.auditLogs)
+      setActivityLogs(nextLogs.activityLogs)
+      setReferenceTime(Date.now())
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : 'Impossible de charger les journaux.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const availableActionTypes = useMemo(() => {
     const unique = Array.from(new Set(auditLogs.map((row) => row.action_type).filter(Boolean)))
@@ -172,11 +220,10 @@ export default function AuditLogsView() {
   const filteredAuditLogs = useMemo(() => {
     const keyword = search.trim().toLowerCase()
 
-    const now = Date.now()
     const periodThreshold = (() => {
-      if (periodFilter === '7J') return now - 7 * 24 * 60 * 60 * 1000
-      if (periodFilter === '30J') return now - 30 * 24 * 60 * 60 * 1000
-      if (periodFilter === '90J') return now - 90 * 24 * 60 * 60 * 1000
+      if (periodFilter === '7J') return referenceTime - 7 * 24 * 60 * 60 * 1000
+      if (periodFilter === '30J') return referenceTime - 30 * 24 * 60 * 60 * 1000
+      if (periodFilter === '90J') return referenceTime - 90 * 24 * 60 * 60 * 1000
       return 0
     })()
 
@@ -212,7 +259,7 @@ export default function AuditLogsView() {
 
       return haystack.includes(keyword)
     })
-  }, [actionFilter, auditLogs, periodFilter, search])
+  }, [actionFilter, auditLogs, periodFilter, referenceTime, search])
 
   const totalPages = Math.max(1, Math.ceil(filteredAuditLogs.length / PAGE_SIZE))
 
@@ -237,6 +284,7 @@ export default function AuditLogsView() {
     setSearch('')
     setActionFilter('TOUTES')
     setPeriodFilter('30J')
+    setReferenceTime(Date.now())
   }
 
   const hasFilters = search.trim() !== '' || actionFilter !== 'TOUTES' || periodFilter !== '30J'
@@ -264,7 +312,7 @@ export default function AuditLogsView() {
           </div>
 
           <button
-            onClick={fetchLogs}
+            onClick={handleRefresh}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             <RefreshCcw size={16} />
@@ -274,11 +322,11 @@ export default function AuditLogsView() {
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-[0.15em] text-slate-500">Journaux d'audit</p>
+            <p className="text-xs uppercase tracking-[0.15em] text-slate-500">Journaux d&apos;audit</p>
             <p className="mt-1 text-2xl font-black text-slate-900">{auditLogs.length}</p>
           </div>
           <div className="rounded-2xl bg-blue-50 p-4">
-            <p className="text-xs uppercase tracking-[0.15em] text-blue-700">Journaux d'activité</p>
+            <p className="text-xs uppercase tracking-[0.15em] text-blue-700">Journaux d&apos;activité</p>
             <p className="mt-1 text-2xl font-black text-blue-900">{activityLogs.length}</p>
           </div>
           <div className="rounded-2xl bg-emerald-50 p-4">

@@ -1,16 +1,36 @@
 'use client'
 
 import React from 'react'
-import { QRCodeSVG } from 'qrcode.react'
 import { TARIFS_OFFICIELS } from '@/lib/tarifs'
 
+type FormFicheIdentite = {
+  id: string | null
+  num_fiche: string
+  noms: string
+  genre: string
+  date_souscription: string
+  num_piece_id: string
+  employeur: string
+  matricule: string
+  fonction: string
+  avenue_num: string
+  quartier: string
+  commune: string
+  email: string
+  telephone: string
+  telephone_2: string
+  num_parcelle: string
+  num_cadastral: string
+  num_acte_vente: string
+  nombre_parcelles: number
+  categorie: 'MILITAIRE' | 'CIVIL'
+  site: string
+  dimension: string
+}
+
 interface StepIdentitesProps {
-  fiche: any;
+  fiche: FormFicheIdentite;
   handleChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
-  recherche: string;
-  setRecherche: (val: string) => void;
-  executerRecherche: () => Promise<void>;
-  type: 'MILITAIRE' | 'CIVIL';
   onNext: () => void;
   dimensionsDisponibles: string[];
   modalites: { total: number; acompte: number; mensualite: number };
@@ -19,10 +39,6 @@ interface StepIdentitesProps {
 export default function StepIdentites({
   fiche,
   handleChange,
-  recherche,
-  setRecherche,
-  executerRecherche,
-  type,
   onNext,
   dimensionsDisponibles,
   modalites
@@ -52,7 +68,7 @@ export default function StepIdentites({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Lieu d'affectation ou Employeur</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Lieu d&apos;affectation ou Employeur</label>
                 <input name="employeur" value={fiche.employeur} placeholder="Où travaille le souscripteur ?..." onChange={handleChange} required className="w-full uppercase border-b border-slate-200 py-2 text-sm outline-none" />
               </div>
               <div>
@@ -62,8 +78,8 @@ export default function StepIdentites({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Pièce d'identité</label>
-                <input name="num_piece_id" value={fiche.num_piece_id} placeholder="N° Pièce d'ID / Passeport / Électeur..." onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none font-medium" />
+                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Pièce d&apos;identité</label>
+                <input name="num_piece_id" value={fiche.num_piece_id} placeholder="N° Pièce d&apos;ID / Passeport / Électeur..." onChange={handleChange} className="w-full border-b border-slate-200 py-2 text-sm outline-none font-medium" />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Grade / Fonction</label>
